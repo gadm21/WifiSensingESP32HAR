@@ -1,0 +1,4 @@
+Comparison,MMD^2,Domain Acc,Principal Angle,Centroid Shift
+D1->D2,0.217793,0.9674,34.78,13.0175
+D2->D3,0.115528,0.9778,33.71,14.3409
+D1->D3,0.10695,0.949,27.53,8.9033

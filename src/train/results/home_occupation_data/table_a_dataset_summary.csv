@@ -1,0 +1,4 @@
+Dataset,Samples,Features,Classes,Intrinsic Dim (PR),Intrinsic Dim (MLE)
+D1,1497,64,3,2.2,2.56
+D2,1497,64,3,2.3,2.54
+D3,1497,64,3,2.19,2.8
