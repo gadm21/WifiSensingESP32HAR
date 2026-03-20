@@ -149,25 +149,19 @@ def load_cifar100(n_samples=5000):
 # Annotation helper
 # =============================================================================
 def sil_quality(sil):
-    """Return a qualitative label for silhouette score."""
-    if sil >= 0.7:
+    """Return a qualitative label for silhouette score (poor/fair/strong)."""
+    if sil >= 0.5:
         return 'strong'
-    elif sil >= 0.5:
-        return 'good'
-    elif sil >= 0.25:
-        return 'fair'
     elif sil >= 0.0:
-        return 'weak'
+        return 'fair'
     else:
         return 'poor'
 
 
 def fisher_quality(fisher):
-    """Return a qualitative label for Fisher ratio."""
-    if fisher >= 10:
-        return 'excellent'
-    elif fisher >= 1:
-        return 'good'
+    """Return a qualitative label for Fisher ratio (poor/fair/strong)."""
+    if fisher >= 1:
+        return 'strong'
     elif fisher >= 0.1:
         return 'fair'
     else:
@@ -175,69 +169,81 @@ def fisher_quality(fisher):
 
 
 def annotation_color(sil):
-    """Badge background color based on silhouette quality."""
+    """Badge background color based on silhouette quality (poor/fair/strong)."""
     if sil >= 0.5:
-        return '#2ca02c'   # green
-    elif sil >= 0.25:
-        return '#ff7f0e'   # orange
+        return '#2ca02c'   # green (strong)
     elif sil >= 0.0:
-        return '#d62728'   # red
+        return '#ff7f0e'   # orange (fair)
     else:
-        return '#7f7f7f'   # gray
+        return '#d62728'   # red (poor)
 
 
 # =============================================================================
 # Plotting
 # =============================================================================
-def plot_pca_2d(ax, X_pca, y, label_names, title, sil, fisher, var_ratio):
-    """Plot 2D PCA scatter on a given axes with smart annotations."""
+def plot_pca_2d(ax, X_pca, y, label_names, title, sil, fisher, var_ratio, is_individual=False):
+    """Plot 2D PCA scatter on a given axes with smart annotations.
+    
+    Publication-quality styling with clean aesthetics.
+    """
     classes = np.unique(y)
     n_cls = len(classes)
 
-    # Use a good colormap
+    # Publication-quality colormap
     if n_cls <= 10:
-        cmap = plt.cm.get_cmap('tab10', max(n_cls, 3))
+        cmap = plt.cm.get_cmap('Set1', max(n_cls, 3))
     else:
         cmap = plt.cm.get_cmap('tab20', n_cls)
+
+    # Adjust sizes based on individual vs combined plot
+    marker_size = 12 if is_individual else 8
+    alpha_val = 0.6 if is_individual else 0.5
+    font_scale = 1.2 if is_individual else 1.0
 
     for i, c in enumerate(classes):
         mask = y == c
         lbl = label_names.get(c, str(c)) if label_names else str(c)
         # Subsample for plotting if too many points
         idx = np.where(mask)[0]
-        if len(idx) > 1000:
+        if len(idx) > 1500:
             rng = np.random.RandomState(42)
-            idx = rng.choice(idx, 1000, replace=False)
+            idx = rng.choice(idx, 1500, replace=False)
         ax.scatter(X_pca[idx, 0], X_pca[idx, 1],
-                   c=[cmap(i % cmap.N)], s=8, alpha=0.5,
-                   label=lbl, edgecolors='none', rasterized=True)
+                   c=[cmap(i % cmap.N)], s=marker_size, alpha=alpha_val,
+                   label=lbl, edgecolors='none', rasterized=False)
 
-    # Axis labels with variance explained
-    ax.set_xlabel(f'PC1 ({var_ratio[0]*100:.1f}%)', fontsize=8)
-    ax.set_ylabel(f'PC2 ({var_ratio[1]*100:.1f}%)', fontsize=8)
-    ax.set_title(title, fontsize=10, fontweight='bold', pad=10)
-    ax.tick_params(labelsize=7)
+    # Axis labels with variance explained - publication styling
+    ax.set_xlabel(f'PC1 ({var_ratio[0]*100:.1f}%)', fontsize=int(10 * font_scale), fontweight='medium')
+    ax.set_ylabel(f'PC2 ({var_ratio[1]*100:.1f}%)', fontsize=int(10 * font_scale), fontweight='medium')
+    ax.set_title(title, fontsize=int(12 * font_scale), fontweight='bold', pad=12)
+    ax.tick_params(labelsize=int(9 * font_scale), width=1.2)
+    
+    # Clean spines
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.2)
+        spine.set_color('#333333')
 
-    # Smart annotation badge
-    sil_str = f"Sil = {sil:+.3f}" if sil < 0 else f"Sil = {sil:.3f}"
-    fisher_str = f"FDR = {fisher:.3f}"
+    # Smart annotation badge with cleaner styling
+    sil_str = f"Sil = {sil:+.2f}" if sil < 0 else f"Sil = {sil:.2f}"
+    fisher_str = f"FDR = {fisher:.2f}"
     sep_label = sil_quality(sil)
     badge_col = annotation_color(sil)
 
-    annotation_text = f"{sil_str}  ({sep_label})\n{fisher_str}  ({fisher_quality(fisher)})"
+    annotation_text = f"{sil_str} ({sep_label})\n{fisher_str} ({fisher_quality(fisher)})"
 
-    bbox_props = dict(boxstyle="round,pad=0.4", facecolor=badge_col,
-                      edgecolor='white', alpha=0.85)
+    bbox_props = dict(boxstyle="round,pad=0.5", facecolor=badge_col,
+                      edgecolor='white', alpha=0.9, linewidth=1.5)
     ax.text(0.03, 0.97, annotation_text, transform=ax.transAxes,
-            fontsize=7.5, verticalalignment='top', fontfamily='monospace',
+            fontsize=int(9 * font_scale), verticalalignment='top', fontfamily='sans-serif',
             color='white', fontweight='bold', bbox=bbox_props)
 
-    # Legend — only if <= 10 classes
+    # Legend — only if <= 10 classes, with better styling
     if n_cls <= 10:
-        leg = ax.legend(fontsize=6, loc='lower right', framealpha=0.8,
-                        markerscale=1.5, handletextpad=0.3,
-                        borderpad=0.3, labelspacing=0.2)
-        leg.get_frame().set_linewidth(0.5)
+        leg = ax.legend(fontsize=int(8 * font_scale), loc='lower right', framealpha=0.95,
+                        markerscale=1.8, handletextpad=0.4,
+                        borderpad=0.5, labelspacing=0.3, fancybox=True,
+                        edgecolor='#cccccc')
+        leg.get_frame().set_linewidth(1.0)
 
 
 def generate_all_plots(data_root, n_pca_full=50, window_len=500,
@@ -321,12 +327,25 @@ def generate_all_plots(data_root, n_pca_full=50, window_len=500,
         print("[ERROR] No datasets loaded.")
         return
 
+    # Publication-quality settings
+    plt.rcParams.update({
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Arial', 'Helvetica', 'DejaVu Sans'],
+        'font.size': 10,
+        'axes.linewidth': 1.2,
+        'axes.labelweight': 'medium',
+        'figure.dpi': 300,
+        'savefig.dpi': 300,
+        'pdf.fonttype': 42,  # TrueType fonts for better compatibility
+        'ps.fonttype': 42,
+    })
+
     # Layout: 2 columns, ceil(n/2) rows (single-column paper figure)
     ncols = 2
     nrows = int(np.ceil(n / ncols))
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(7.0, 3.2 * nrows),
-                              constrained_layout=True, dpi=150)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(8.0, 3.5 * nrows),
+                              constrained_layout=True, dpi=300)
     if nrows == 1 and ncols == 1:
         axes = np.array([axes])
     axes = np.atleast_2d(axes)
@@ -334,28 +353,65 @@ def generate_all_plots(data_root, n_pca_full=50, window_len=500,
     for i, (title, X_pca2, y, label_names, sil, fisher, var_ratio) in enumerate(datasets):
         r, c = divmod(i, ncols)
         ax = axes[r, c]
-        plot_pca_2d(ax, X_pca2, y, label_names, title, sil, fisher, var_ratio)
+        plot_pca_2d(ax, X_pca2, y, label_names, title, sil, fisher, var_ratio, is_individual=False)
 
     # Hide unused axes
     for i in range(n, nrows * ncols):
         r, c = divmod(i, ncols)
         axes[r, c].set_visible(False)
 
-    # Save
+    # Save combined figure - PDF only for publication
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(ASSETS_DIR, exist_ok=True)
 
-    for ext in ['pdf', 'png']:
-        path_stats = os.path.join(OUT_DIR, f'pca_2d_scatter.{ext}')
-        fig.savefig(path_stats, bbox_inches='tight', dpi=300 if ext == 'png' else None)
-        print(f"  Saved {path_stats}")
+    # Save as high-quality PDF
+    path_stats = os.path.join(OUT_DIR, 'pca_2d_scatter.pdf')
+    fig.savefig(path_stats, format='pdf', bbox_inches='tight', dpi=300)
+    print(f"  Saved {path_stats}")
 
-        path_assets = os.path.join(ASSETS_DIR, f'pca_2d_scatter.{ext}')
-        fig.savefig(path_assets, bbox_inches='tight', dpi=300 if ext == 'png' else None)
-        print(f"  Saved {path_assets}")
+    path_assets = os.path.join(ASSETS_DIR, 'pca_2d_scatter.pdf')
+    fig.savefig(path_assets, format='pdf', bbox_inches='tight', dpi=300)
+    print(f"  Saved {path_assets}")
+
+    # Also save PNG for quick preview
+    path_stats_png = os.path.join(OUT_DIR, 'pca_2d_scatter.png')
+    fig.savefig(path_stats_png, format='png', bbox_inches='tight', dpi=300)
+    print(f"  Saved {path_stats_png}")
+
+    path_assets_png = os.path.join(ASSETS_DIR, 'pca_2d_scatter.png')
+    fig.savefig(path_assets_png, format='png', bbox_inches='tight', dpi=300)
+    print(f"  Saved {path_assets_png}")
 
     plt.close(fig)
-    print(f"\nDone — {n} datasets plotted.")
+
+    # --- Generate individual plots for each dataset ---
+    print("\nGenerating individual publication-quality plots...")
+    for title, X_pca2, y, label_names, sil, fisher, var_ratio in datasets:
+        fig_ind, ax_ind = plt.subplots(1, 1, figsize=(6.0, 5.0), dpi=300)
+        plot_pca_2d(ax_ind, X_pca2, y, label_names, title, sil, fisher, var_ratio, is_individual=True)
+        fig_ind.tight_layout()
+        
+        # Create safe filename from title
+        safe_name = title.lower().replace(' ', '_').replace('-', '_')
+        
+        # Save as high-quality PDF (primary format)
+        path_stats = os.path.join(OUT_DIR, f'pca_{safe_name}.pdf')
+        fig_ind.savefig(path_stats, format='pdf', bbox_inches='tight', dpi=300)
+        
+        path_assets = os.path.join(ASSETS_DIR, f'pca_{safe_name}.pdf')
+        fig_ind.savefig(path_assets, format='pdf', bbox_inches='tight', dpi=300)
+        
+        # Also save PNG for quick preview
+        path_stats_png = os.path.join(OUT_DIR, f'pca_{safe_name}.png')
+        fig_ind.savefig(path_stats_png, format='png', bbox_inches='tight', dpi=300)
+        
+        path_assets_png = os.path.join(ASSETS_DIR, f'pca_{safe_name}.png')
+        fig_ind.savefig(path_assets_png, format='png', bbox_inches='tight', dpi=300)
+        
+        plt.close(fig_ind)
+        print(f"  Saved: pca_{safe_name}.pdf/.png")
+
+    print(f"\nDone — {n} datasets plotted (combined + individual, PDF + PNG).")
 
 
 # =============================================================================
