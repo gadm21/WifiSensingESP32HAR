@@ -1,38 +1,16 @@
-﻿
-
-# ================================================================================
-# BEST MODEL PER CONFIGURATION
-# ================================================================================
-#   Separate_lr0.001  : BN+CondCRL+FS10%       Acc=0.6598  F1=0.6411  Kappa=0.5493  MCC=0.5636  ECE=0.1993
-#   Separate_lr0.0001 : BN+Whiten+FS10         Acc=0.7674  F1=0.7713  Kappa=0.6915  MCC=0.697  ECE=0.0906
-#   Split_lr0.001     : AdaBN+CC+W+FS10%       Acc=0.9714  F1=0.9714  Kappa=0.9643  MCC=0.9645  ECE=0.023
-#   Split_lr0.0001    : BN+Whiten+FS10         Acc=0.9587  F1=0.9584  Kappa=0.9484  MCC=0.9494  ECE=0.0172
-
-
+﻿#!/usr/bin/env python3
 """
 Deep Learning components for CSI-based activity recognition.
 
-Contains:
+Architectures:
 - MLP: Multi-layer perceptron classifier
 - Conv1DClassifier: Pure 1D-CNN (temporal convolution) classifier
-- ResMLPClassifier: MLP with residual skip connections
 - CnnLstmClassifier: CNN+BiLSTM sequential classifier
-- FeatureExtractor: Shared feature extraction network with BatchNorm
-- LabelClassifier: Classification head
-- AdaptiveModel: Domain adaptation model using AdaBN + Deep CORAL + TTA
 
-Adaptive Methods:
-1. AdaBN (Adaptive Batch Normalization):
-   Re-estimates BN running statistics on target domain data.
-   Aligns first and second moments (mean, variance) per feature.
-
-2. Deep CORAL (CORrelation ALignment):
-   Minimizes Frobenius norm of covariance difference between source/target features.
-   Aligns full covariance structure (correlations between features).
-
-3. TTA (Test-Time Adaptation via Entropy Minimization):
-   At inference, minimizes prediction entropy on unlabeled target batches
-   by updating BN parameters only. Pushes model toward confident predictions.
+Usage:
+    python dl.py                              # default paths, 3 seeds
+    python dl.py --data-root ../../data --seeds 5
+    python dl.py --window 300 --sr 150 --var-windows 20 200 2000
 """
 
 import math
@@ -228,110 +206,6 @@ class _ResBlock(nn.Module):
     def forward(self, x):
         return F.relu(x + self.block(x))
 
-
-class ResMLPClassifier(nn.Module):
-    """Residual MLP classifier for CSI activity recognition.
-
-    Projects input to a hidden dimension, passes through N residual blocks
-    (each with skip connections), then classifies. Skip connections enable
-    deeper networks without degradation â€” isolates the value of residual
-    learning compared to the vanilla MLP baseline.
-
-    Parameters
-    ----------
-    input_dim : int
-        Number of input features (flattened window).
-    num_classes : int
-        Number of output classes.
-    hidden_dim : int
-        Width of residual blocks. Default 256.
-    num_blocks : int
-        Number of residual blocks. Default 3.
-    dropout : float
-        Dropout probability. Default 0.2.
-    use_batch_norm : bool
-        Whether to use BatchNorm inside residual blocks. Default True.
-    use_whitening : bool
-        Whether to use FeatureWhitening after residual blocks. Default False.
-
-    Example
-    -------
-    >>> model = ResMLPClassifier(input_dim=5200, num_classes=6)
-    >>> logits = model(torch.randn(32, 5200))
-    >>> logits.shape
-    torch.Size([32, 6])
-    """
-
-    def __init__(self, input_dim, num_classes, hidden_dim=256, num_blocks=3,
-                 dropout=0.2, use_batch_norm=True, use_whitening=False):
-        super().__init__()
-        self.num_classes = num_classes
-
-        # Input projection
-        proj_layers = [nn.Linear(input_dim, hidden_dim)]
-        if use_batch_norm:
-            proj_layers.append(nn.BatchNorm1d(hidden_dim))
-        proj_layers.append(nn.ReLU(inplace=True))
-        self.input_proj = nn.Sequential(*proj_layers)
-
-        # Residual blocks
-        self.res_blocks = nn.Sequential(
-            *[_ResBlock(hidden_dim, dropout=dropout, use_batch_norm=use_batch_norm)
-              for _ in range(num_blocks)]
-        )
-
-        self.use_whitening = use_whitening
-        if use_whitening:
-            self.whitening = FeatureWhitening(hidden_dim)
-
-        # Classification head
-        self.label_classifier = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim // 2, num_classes),
-        )
-        self._repr_dim = hidden_dim
-        self._init_weights()
-
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-
-    def extract_features(self, x):
-        x = self.input_proj(x)
-        x = self.res_blocks(x)
-        if self.use_whitening:
-            x = self.whitening(x)
-        return x
-
-    def forward(self, x):
-        z = self.extract_features(x)
-        return self.label_classifier(z)
-
-    def predict(self, x, batch_size=256):
-        if x.size(0) <= batch_size:
-            return self.forward(x)
-        parts = [self.forward(x[i:i+batch_size]) for i in range(0, x.size(0), batch_size)]
-        return torch.cat(parts, 0)
-
-
-def make_resmlp_model(n_features, n_classes, config='small',
-                      use_batch_norm=True, use_whitening=False):
-    """Factory for ResMLPClassifier with preset configs."""
-    configs = {
-        'small': dict(hidden_dim=256,  num_blocks=2, dropout=0.2),
-        'mid':   dict(hidden_dim=512,  num_blocks=3, dropout=0.25),
-        'large': dict(hidden_dim=1024, num_blocks=4, dropout=0.3),
-    }
-    cfg = configs.get(config, configs['small'])
-    return ResMLPClassifier(
-        input_dim=n_features, num_classes=n_classes,
-        use_batch_norm=use_batch_norm, use_whitening=use_whitening, **cfg,
-    )
 
 
 # =============================================================================
@@ -1590,26 +1464,26 @@ def fewshot_finetune(model, X_fs, y_fs, epochs=20, lr=1e-5, batch_size=32):
     return model
 
 
-def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
+def run_dl_experiment(data_root, window_lens=None, guaranteed_sr=150,
                       epochs=50, lr=1e-3, model_size='small', verbose=True,
-                      n_seeds=3, cv_mode=False, n_folds=None):
-    """Run DL experiment: noBN/BN/BN+Whiten/FS20perclass/CORAL x 4 models x 4 datasets x 2 pipelines.
+                      n_seeds=1, cv_mode=False, n_folds=None,
+                      var_windows=None):
+    """Run DL experiment: 3 architectures x 4 datasets x N window lengths x N variance windows.
 
-    Each configuration is run ``n_seeds`` times with different random seeds
-    to produce mean Â± std statistics suitable for research publication.
+    Each configuration is run ``n_seeds`` times with different random seeds.
 
     When ``cv_mode=True``, temporal forward-chaining cross-validation is
     used instead of the fixed metadata train/test split.  Metrics are
-    collected per fold Ã— seed, then aggregated for final mean Â± std.
+    collected per fold x seed, then aggregated for final mean +/- std.
 
     Parameters
     ----------
     data_root : str
         Root folder containing the 4 dataset subfolders.
-    window_len : int
-        Window length. Default 100.
+    window_lens : list of int or None
+        Window lengths to compare. Default [500, 1000, 2000].
     guaranteed_sr : int
-        Resampling rate. Default 100.
+        Resampling rate. Default 150.
     epochs : int
         Training epochs. Default 50.
     lr : float
@@ -1618,11 +1492,13 @@ def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
         'small', 'mid', or 'large'. Default 'small'.
     verbose : bool
     n_seeds : int
-        Number of random seeds for multi-seed runs. Default 3.
+        Number of random seeds for multi-seed runs. Default 1.
     cv_mode : bool
         Use temporal forward-chaining cross-validation. Default False.
     n_folds : int or None
         Number of CV folds (None = auto). Only used when cv_mode=True.
+    var_windows : list of int or None
+        Rolling variance window sizes to compare. Default [20, 200, 2000].
 
     Returns
     -------
@@ -1642,24 +1518,77 @@ def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Conditions to compare
-    CONDITIONS = ['noBN', 'BN', 'BN+Whiten', 'FS20perclass', 'CORAL']
+    # Single condition: no domain adaptation
+    CONDITIONS = ['noBN']
 
     # Model architectures
-    ARCHITECTURES = ['MLP', 'ResMLP', 'Conv1D', 'CNN_LSTM']
+    ARCHITECTURES = ['MLP', 'Conv1D', 'CNN_LSTM']
 
-    # Pipeline: rolling_variance only (best ML results, see Table tab:ml_comparison)
+    # Window lengths
+    if window_lens is None:
+        window_lens = [500, 1000, 2000]
+
+    # Pipeline: rolling_variance with configurable window sizes
+    if var_windows is None:
+        var_windows = [20, 200, 2000]
     PIPELINES = [
-        ('rolling_variance', dict(pipeline_name='rolling_variance', var_window=200)),
+        (f'rv_w{w}', dict(pipeline_name='rolling_variance', var_window=w))
+        for w in var_windows
     ]
 
     # all_results[run_key] = {'seeds': [metrics_per_seed...], 'agg': aggregated}
     all_results = {}
 
-    for pipe_name, pipe_kwargs in PIPELINES:
+    # ---- CSV setup (incremental saving) ----
+    import csv
+    results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dl_results')
+    os.makedirs(results_dir, exist_ok=True)
+    csv_tag = '_cv' if cv_mode else ''
+    csv_path = os.path.join(results_dir, f'dl_results_per_seed{csv_tag}.csv')
+    agg_csv_path = os.path.join(results_dir, f'dl_results_aggregated{csv_tag}.csv')
+    seed_fieldnames = (['dataset', 'window_len', 'pipeline', 'architecture', 'condition',
+                        'fold', 'seed']
+                       + METRICS_CSV_FIELDS
+                       + ['train_time_s', 'infer_time_s', 'data_load_time_s'])
+    agg_fields = ['dataset', 'window_len', 'pipeline', 'architecture', 'condition', 'n_seeds']
+    for _k in METRICS_CSV_FIELDS:
+        agg_fields.extend([f'{_k}_mean', f'{_k}_std'])
+
+    def _save_dl_results():
+        """Rewrite both CSVs with all results collected so far."""
+        with open(csv_path, 'w', newline='') as _f:
+            w = csv.DictWriter(_f, fieldnames=seed_fieldnames, extrasaction='ignore')
+            w.writeheader()
+            for _key in sorted(all_results.keys()):
+                _entry = all_results[_key]
+                if _entry['agg'] is None:
+                    continue
+                for _sm in _entry['seeds']:
+                    _row = {
+                        'dataset': _entry['agg']['dataset'],
+                        'window_len': _entry['agg']['window_len'],
+                        'pipeline': _entry['agg']['pipeline'],
+                        'architecture': _entry['agg']['architecture'],
+                        'condition': _entry['agg']['condition'],
+                    }
+                    _row.update(_sm)
+                    w.writerow(_row)
+        with open(agg_csv_path, 'w', newline='') as _f:
+            w = csv.DictWriter(_f, fieldnames=agg_fields, extrasaction='ignore')
+            w.writeheader()
+            for _key in sorted(all_results.keys()):
+                if all_results[_key]['agg'] is not None:
+                    w.writerow(all_results[_key]['agg'])
+        print(f"  [saved] {os.path.abspath(csv_path)}")
+
+    for window_len in window_lens:
+     for pipe_name, pipe_kwargs in PIPELINES:
+        wl_pipe = f"wl{window_len}__{pipe_name}"
         print(f"\n{'#'*80}")
-        print(f"# PIPELINE: {pipe_name}")
+        print(f"# WINDOW_LEN={window_len}  PIPELINE: {pipe_name}")
         print(f"{'#'*80}")
+
+        t_data_start = time.perf_counter()
 
         if cv_mode:
             try:
@@ -1690,10 +1619,13 @@ def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
             for ds_name, (train_ds, test_ds) in datasets.items():
                 ds_fold_list.append((ds_name, -1, train_ds, test_ds))
 
+        data_load_time = round(time.perf_counter() - t_data_start, 3)
+        print(f"  Data processing time: {data_load_time:.3f}s")
+
         for ds_name, fold_idx, train_ds, test_ds in ds_fold_list:
             fold_tag = f"fold{fold_idx}" if fold_idx >= 0 else "fixed"
             print(f"\n{'='*70}")
-            print(f"  Dataset: {ds_name}  |  Pipeline: {pipe_name}  |  Split: {fold_tag}")
+            print(f"  Dataset: {ds_name}  |  WL={window_len}  |  Pipeline: {pipe_name}  |  Split: {fold_tag}")
             print(f"  Train: {train_ds.X.shape}  Test: {test_ds.X.shape}  "
                   f"Classes: {train_ds.num_classes} {train_ds.labels}")
             print(f"{'='*70}")
@@ -1708,21 +1640,16 @@ def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
             X_te, y_te = test_ds.X, test_ds.y
             X_target = X_te
 
-            # Few-shot: 20 per class from BEGINNING of test set
-            X_fs, y_fs = test_ds.get_fewshot(n_per_class=20)
-            print(f"  Few-shot: {X_fs.shape[0]} samples (20/class from test start)")
-
             for arch_name in ARCHITECTURES:
               for cond_name in CONDITIONS:
-                run_key = f"{ds_name}__{pipe_name}__{arch_name}__{cond_name}"
+                run_key = f"{ds_name}__{wl_pipe}__{arch_name}__{cond_name}"
                 print(f"\n    {'='*60}")
                 print(f"    {arch_name} | {cond_name} | {ds_name} | {pipe_name}")
                 print(f"    {'='*60}")
 
                 # Determine model kwargs from condition
-                use_bn = (cond_name != 'noBN')
-                use_coral = (cond_name == 'CORAL')
-                use_whitening = (cond_name == 'BN+Whiten')
+                use_bn = False
+                use_whitening = False
 
                 seed_metrics_list = []
 
@@ -1733,10 +1660,6 @@ def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
                     try:
                         if arch_name == 'MLP':
                             model = make_mlp_model(
-                                n_features, n_classes, config=model_size,
-                                use_batch_norm=use_bn, use_whitening=use_whitening)
-                        elif arch_name == 'ResMLP':
-                            model = make_resmlp_model(
                                 n_features, n_classes, config=model_size,
                                 use_batch_norm=use_bn, use_whitening=use_whitening)
                         elif arch_name == 'Conv1D':
@@ -1761,8 +1684,8 @@ def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
                         trained_model, info = train_model(
                             model, X_tr, y_tr, X_target, X_te, y_te,
                             epochs=epochs, lr=lr, batch_size=64,
-                            coral_weight=0.5 if use_coral else 0.0,
-                            use_conditional_coral=use_coral,
+                            coral_weight=0.0,
+                            use_conditional_coral=False,
                             confidence_threshold=0.8,
                             verbose=(verbose and seed_idx == 0),
                         )
@@ -1785,25 +1708,10 @@ def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
                         y_te, preds, y_prob=probs, n_classes=n_classes)
                     metrics['train_time_s'] = info['train_time_s']
                     metrics['infer_time_s'] = round(infer_time, 4)
+                    metrics['data_load_time_s'] = data_load_time
+                    metrics['window_len'] = window_len
                     metrics['seed'] = seed
                     metrics['fold'] = fold_idx
-
-                    # For FS20perclass: additionally fine-tune and re-evaluate
-                    if cond_name == 'FS20perclass' and X_fs.shape[0] > 0:
-                        fs_model = fewshot_finetune(
-                            trained_model, X_fs, y_fs,
-                            epochs=20, lr=1e-5, batch_size=32)
-                        with torch.no_grad():
-                            fs_logits = fs_model.predict(
-                                torch.FloatTensor(X_te).to(device))
-                        fs_probs = F.softmax(fs_logits, dim=1).cpu().numpy()
-                        fs_preds = fs_logits.argmax(dim=1).cpu().numpy()
-                        metrics = _compute_all_metrics(
-                            y_te, fs_preds, y_prob=fs_probs, n_classes=n_classes)
-                        metrics['train_time_s'] = info['train_time_s']
-                        metrics['infer_time_s'] = round(infer_time, 4)
-                        metrics['seed'] = seed
-                        metrics['fold'] = fold_idx
 
                     print(f"        Acc={metrics['accuracy']}  F1w={metrics['f1_weighted']}  "
                           f"Kappa={metrics['cohen_kappa']}  MCC={metrics['mcc']}  "
@@ -1822,96 +1730,69 @@ def run_dl_experiment(data_root, window_len=100, guaranteed_sr=100,
             if not entry['seeds']:
                 continue
             agg = aggregate_seed_metrics(entry['seeds'])
+            # run_key: dataset__wl{N}__rv_w{M}__arch__cond
             parts = run_key.split('__')
             agg['dataset'] = parts[0]
-            agg['pipeline'] = parts[1] if len(parts) > 1 else ''
-            agg['architecture'] = parts[2] if len(parts) > 2 else ''
-            agg['condition'] = parts[3] if len(parts) > 3 else ''
+            agg['window_len'] = parts[1] if len(parts) > 1 else ''
+            agg['pipeline'] = parts[2] if len(parts) > 2 else ''
+            agg['architecture'] = parts[3] if len(parts) > 3 else ''
+            agg['condition'] = parts[4] if len(parts) > 4 else ''
             entry['agg'] = agg
-            print(f"  [{run_key}] MEANÂ±STD  "
-                  f"Acc={agg.get('accuracy_mean','?')}Â±{agg.get('accuracy_std','?')}  "
-                  f"F1w={agg.get('f1_weighted_mean','?')}Â±{agg.get('f1_weighted_std','?')}  "
-                  f"Kappa={agg.get('cohen_kappa_mean','?')}Â±{agg.get('cohen_kappa_std','?')}")
+            print(f"  [{run_key}] "
+                  f"Acc={agg.get('accuracy_mean','?')}  "
+                  f"F1w={agg.get('f1_weighted_mean','?')}  "
+                  f"Kappa={agg.get('cohen_kappa_mean','?')}")
+            _save_dl_results()
 
-    # ---- Final comparison table (mean Â± std) ----
+    # ---- Final comparison table ----
     print(f"\n{'='*200}")
-    split_desc = f"CV {n_folds or 'auto'} folds Ã— {n_seeds} seeds" if cv_mode else f"{n_seeds} seeds"
-    print(f"FINAL DL COMPARISON: 2 Pipelines x 4 Datasets x 4 Architectures x 5 Conditions  ({split_desc})")
+    split_desc = f"CV {n_folds or 'auto'} folds x {n_seeds} seeds" if cv_mode else f"{n_seeds} seed(s)"
+    print(f"FINAL DL COMPARISON: {len(window_lens)} WLs x {len(var_windows)} VarWins x 4 Datasets x 3 Archs  ({split_desc})")
     print(f"{'='*200}")
-    hdr = (f"{'Dataset':<25} {'Pipeline':<20} {'Arch':<14} {'Condition':<14} | "
-           f"{'Acc':>14} {'F1w':>14} {'Kappa':>14} {'MCC':>14} {'ECE':>14}")
+    hdr = (f"{'Dataset':<25} {'WinLen':<10} {'VarWin':<10} {'Arch':<14} | "
+           f"{'Acc':>8} {'F1w':>8} {'Kappa':>8} {'DataLoad(s)':>12} {'Train(s)':>10} {'Infer(s)':>10}")
     print(hdr)
     print("-" * 160)
     for key in sorted(all_results.keys()):
         a = all_results[key]['agg']
-        def _fmt(k):
-            m = a.get(f'{k}_mean', float('nan'))
-            s = a.get(f'{k}_std', float('nan'))
-            return f"{m:.4f}Â±{s:.4f}"
-        print(f"{a['dataset']:<25} {a['pipeline']:<20} "
-              f"{a['architecture']:<14} {a['condition']:<14} | "
-              f"{_fmt('accuracy'):>14} {_fmt('f1_weighted'):>14} "
-              f"{_fmt('cohen_kappa'):>14} {_fmt('mcc'):>14} "
-              f"{_fmt('ece'):>14}")
+        s0 = all_results[key]['seeds'][0] if all_results[key]['seeds'] else {}
+        acc = a.get('accuracy_mean', float('nan'))
+        f1w = a.get('f1_weighted_mean', float('nan'))
+        kap = a.get('cohen_kappa_mean', float('nan'))
+        dl_t = s0.get('data_load_time_s', '')
+        tr_t = s0.get('train_time_s', '')
+        inf_t = s0.get('infer_time_s', '')
+        print(f"{a['dataset']:<25} {a['window_len']:<10} {a['pipeline']:<10} "
+              f"{a['architecture']:<14} | "
+              f"{acc:>8.4f} {f1w:>8.4f} {kap:>8.4f} "
+              f"{str(dl_t):>12} {str(tr_t):>10} {str(inf_t):>10}")
 
-    # ---- Best per dataset+pipeline ----
+    # ---- Best per dataset+window_len+pipeline ----
     print(f"\n{'='*100}")
-    print("BEST MODEL PER DATASET + PIPELINE (by mean accuracy)")
+    print("BEST MODEL PER DATASET + WINDOW_LEN + VAR_WINDOW (by accuracy)")
     print(f"{'='*100}")
-    ds_pipe_pairs = sorted(set((a['agg']['dataset'], a['agg']['pipeline'])
+    ds_pipe_pairs = sorted(set((a['agg']['dataset'], a['agg']['window_len'], a['agg']['pipeline'])
                                for a in all_results.values()))
-    for dn, pn in ds_pipe_pairs:
+    for dn, wl, pn in ds_pipe_pairs:
         subset = {k: v for k, v in all_results.items()
-                  if v['agg']['dataset'] == dn and v['agg']['pipeline'] == pn}
+                  if v['agg']['dataset'] == dn and v['agg']['window_len'] == wl
+                  and v['agg']['pipeline'] == pn}
         if not subset:
             continue
         best_key = max(subset, key=lambda k: subset[k]['agg'].get('accuracy_mean', 0))
         ba = subset[best_key]['agg']
-        print(f"  {dn:<25} {pn:<20}: {ba['architecture']}/{ba['condition']}  "
-              f"Acc={ba.get('accuracy_mean',0):.4f}Â±{ba.get('accuracy_std',0):.4f}  "
-              f"F1={ba.get('f1_weighted_mean',0):.4f}Â±{ba.get('f1_weighted_std',0):.4f}")
+        print(f"  {dn:<25} {wl:<10} {pn:<10}: {ba['architecture']}  "
+              f"Acc={ba.get('accuracy_mean',0):.4f}  "
+              f"F1={ba.get('f1_weighted_mean',0):.4f}")
 
     print(f"\n{'='*80}")
     print("DL experiments completed!")
     print(f"{'='*80}")
 
-    # ---- Save per-seed results to CSV (full unified columns) ----
-    import csv
-    results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'dl_results')
-    os.makedirs(results_dir, exist_ok=True)
-
-    # Per-seed CSV
-    csv_tag = '_cv' if cv_mode else ''
-    csv_path = os.path.join(results_dir, f'dl_results_per_seed{csv_tag}.csv')
-    fieldnames = (['dataset', 'pipeline', 'architecture', 'condition', 'fold', 'seed']
-                  + METRICS_CSV_FIELDS + ['train_time_s', 'infer_time_s'])
-    with open(csv_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-        writer.writeheader()
-        for key in sorted(all_results.keys()):
-            entry = all_results[key]
-            for sm in entry['seeds']:
-                row = {
-                    'dataset': entry['agg']['dataset'],
-                    'pipeline': entry['agg']['pipeline'],
-                    'architecture': entry['agg']['architecture'],
-                    'condition': entry['agg']['condition'],
-                }
-                row.update(sm)
-                writer.writerow(row)
-    print(f"\n[info] Per-seed results saved to {os.path.abspath(csv_path)}")
-
-    # Aggregated CSV (mean Â± std)
-    agg_csv_path = os.path.join(results_dir, f'dl_results_aggregated{csv_tag}.csv')
-    agg_fields = ['dataset', 'pipeline', 'architecture', 'condition', 'n_seeds']
-    for k in METRICS_CSV_FIELDS:
-        agg_fields.extend([f'{k}_mean', f'{k}_std'])
-    with open(agg_csv_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=agg_fields, extrasaction='ignore')
-        writer.writeheader()
-        for key in sorted(all_results.keys()):
-            writer.writerow(all_results[key]['agg'])
-    print(f"[info] Aggregated results saved to {os.path.abspath(agg_csv_path)}")
+    # ---- Final save ----
+    _save_dl_results()
+    print(f"\n[info] Final per-seed results: {os.path.abspath(csv_path)}")
+    print(f"[info] Final aggregated results: {os.path.abspath(agg_csv_path)}")
 
     return all_results
 
@@ -1920,29 +1801,32 @@ if __name__ == '__main__':
     import sys, os, argparse
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-    parser = argparse.ArgumentParser(description='DL Domain Adaptation Experiments')
+    parser = argparse.ArgumentParser(description='DL Experiments')
     parser.add_argument('--data-root', type=str,
                         default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                              '..', '..', 'data'),
                         help='Root folder containing dataset subfolders')
-    parser.add_argument('--window', type=int, default=300, help='Window length')
+    parser.add_argument('--window-lens', type=int, nargs='+', default=[500, 1000, 2000],
+                        help='Window lengths to compare (default: 500 1000 2000)')
     parser.add_argument('--sr', type=int, default=150, help='Guaranteed sample rate')
     parser.add_argument('--epochs', type=int, default=100, help='Training epochs')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--model-size', type=str, default='small',
                         choices=['small', 'mid', 'large'])
-    parser.add_argument('--n-seeds', type=int, default=3,
-                        help='Number of random seeds for multi-run (default: 3)')
+    parser.add_argument('--n-seeds', type=int, default=1,
+                        help='Number of random seeds for multi-run (default: 1)')
     parser.add_argument('--cv', action='store_true',
                         help='Use temporal forward-chaining cross-validation')
     parser.add_argument('--n-folds', type=int, default=None,
                         help='Number of CV folds (auto if not set)')
     parser.add_argument('--verbose', action='store_true')
+    parser.add_argument('--var-windows', type=int, nargs='+', default=[20, 200, 2000],
+                        help='Rolling variance window sizes to compare (default: 20 200 2000)')
     args = parser.parse_args()
 
     run_dl_experiment(
         data_root=os.path.abspath(args.data_root),
-        window_len=args.window,
+        window_lens=args.window_lens,
         guaranteed_sr=args.sr,
         epochs=args.epochs,
         lr=args.lr,
@@ -1951,4 +1835,5 @@ if __name__ == '__main__':
         n_seeds=args.n_seeds,
         cv_mode=args.cv,
         n_folds=args.n_folds,
+        var_windows=args.var_windows,
     )

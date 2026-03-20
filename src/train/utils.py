@@ -2740,35 +2740,36 @@ def load_csi_datasets(train_dirs, test_dirs, window_len, verbose=False):
     
     test_ds_files = [DatasetFile(p, test_pipeline, [l]) for l, p in test_files]
     test_ds = TrainingDataset(test_ds_files, feature_key='mag', label_map=train_ds.label_map, balance=True)
-def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
+def run_ml_pipeline_experiment(data_root, window_lens=None, guaranteed_sr=150,
                                var_window=20, verbose=False, n_seeds=1,
                                cv_mode=False, n_folds=None):
     """Run comprehensive ML experiment across all datasets and pipelines.
 
-    Compares ML models on 4 feature pipelines across 4 datasets.
+    Compares ML models on 4 feature pipelines across 4 datasets and
+    multiple window lengths.
     Each configuration is run ``n_seeds`` times with different random seeds.
     Uses the shared ``compute_all_metrics`` function with ``predict_proba``
     for calibration metrics (ECE, log_loss, confidence, entropy).
 
-    Computational cost is measured with publication-grade methods:
+    Computational cost is measured:
+      - **Data processing time**: ``time.perf_counter()`` for dataset loading.
       - **Training CPU time**: ``time.process_time()`` (excludes I/O, sleep).
       - **Training wall time**: ``time.perf_counter()`` (real elapsed time).
       - **Inference wall time**: ``time.perf_counter()`` for predict + predict_proba.
-      - **Peak memory (MB)**: ``tracemalloc`` peak during ``model.fit()``.
       - **Model size (MB)**: ``pickle`` serialised byte length of fitted model.
 
     When ``cv_mode=True``, temporal forward-chaining cross-validation is
     used instead of the fixed metadata train/test split.  Metrics are
-    collected per fold Ã— seed, then aggregated for final mean Â± std.
+    collected per fold x seed, then aggregated for final mean +/- std.
 
     Parameters
     ----------
     data_root : str
         Root folder containing the 4 dataset subfolders.
-    window_len : int
-        Window length. Default 100.
+    window_lens : list of int or None
+        Window lengths to compare. Default [500, 1000, 2000].
     guaranteed_sr : int
-        Resampling rate. Default 100.
+        Resampling rate. Default 150.
     var_window : int
         Rolling variance window. Default 20.
     verbose : bool
@@ -2782,21 +2783,68 @@ def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
 
     Returns
     -------
-    dict : nested {dataset__pipeline__model: {'seeds': [...], 'agg': {...}}}
+    dict : nested {dataset__wl{N}__pipeline__model: {'seeds': [...], 'agg': {...}}}
     """
     import traceback
-    import tracemalloc
     import pickle
 
     PIPELINES = ['amplitude', 'amplitude_phase', 'amplitude_sanitized', 'rolling_variance']
     SEEDS = list(range(42, 42 + n_seeds))
 
+    if window_lens is None:
+        window_lens = [500, 1000, 2000]
+
     all_results = {}
 
-    for pipe_name in PIPELINES:
+    # ---- CSV setup (incremental saving) ----
+    import csv
+    results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ml_results')
+    os.makedirs(results_dir, exist_ok=True)
+    csv_tag = '_cv' if cv_mode else ''
+    csv_path = os.path.join(results_dir, f'ml_pipeline_results_per_seed{csv_tag}.csv')
+    agg_csv_path = os.path.join(results_dir, f'ml_pipeline_results_aggregated{csv_tag}.csv')
+    seed_fieldnames = (['dataset', 'window_len', 'pipeline', 'model', 'fold', 'seed']
+                       + METRICS_CSV_FIELDS
+                       + ['data_load_time_s', 'train_cpu_s', 'train_wall_s', 'infer_wall_s',
+                          'model_size_mb',
+                          'train_samples', 'test_samples', 'n_features'])
+    agg_fields = ['dataset', 'window_len', 'pipeline', 'model', 'n_seeds']
+    for _k in METRICS_CSV_FIELDS:
+        agg_fields.extend([f'{_k}_mean', f'{_k}_std'])
+
+    def _save_ml_results():
+        """Rewrite both CSVs with all results collected so far."""
+        with open(csv_path, 'w', newline='') as _f:
+            w = csv.DictWriter(_f, fieldnames=seed_fieldnames, extrasaction='ignore')
+            w.writeheader()
+            for _key in sorted(all_results.keys()):
+                _entry = all_results[_key]
+                if _entry['agg'] is None:
+                    continue
+                for _sm in _entry['seeds']:
+                    _row = {
+                        'dataset': _entry['agg']['dataset'],
+                        'window_len': _entry['agg']['window_len'],
+                        'pipeline': _entry['agg']['pipeline'],
+                        'model': _entry['agg']['model'],
+                    }
+                    _row.update(_sm)
+                    w.writerow(_row)
+        with open(agg_csv_path, 'w', newline='') as _f:
+            w = csv.DictWriter(_f, fieldnames=agg_fields, extrasaction='ignore')
+            w.writeheader()
+            for _key in sorted(all_results.keys()):
+                if all_results[_key]['agg'] is not None:
+                    w.writerow(all_results[_key]['agg'])
+        print(f"  [saved] {os.path.abspath(csv_path)}")
+
+    for window_len in window_lens:
+     for pipe_name in PIPELINES:
         print(f"\n{'#'*80}")
-        print(f"# PIPELINE: {pipe_name}")
+        print(f"# WINDOW_LEN={window_len}  PIPELINE: {pipe_name}")
         print(f"{'#'*80}")
+
+        t_data_start = time.perf_counter()
 
         if cv_mode:
             try:
@@ -2810,7 +2858,6 @@ def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
                 print(f"  ERROR loading CV datasets for pipeline '{pipe_name}': {e}")
                 traceback.print_exc()
                 continue
-            # Flatten: list of (ds_name, fold_idx, train_ds, test_ds)
             ds_fold_list = []
             for ds_name, folds in datasets_cv.items():
                 for fold_idx, train_ds, test_ds in folds:
@@ -2830,16 +2877,19 @@ def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
             for ds_name, (train_ds, test_ds) in datasets.items():
                 ds_fold_list.append((ds_name, -1, train_ds, test_ds))
 
+        data_load_time = round(time.perf_counter() - t_data_start, 3)
+        print(f"  Data processing time: {data_load_time:.3f}s")
+
         for ds_name, fold_idx, train_ds, test_ds in ds_fold_list:
             fold_tag = f"fold{fold_idx}" if fold_idx >= 0 else "fixed"
             print(f"\n{'='*70}")
-            print(f"  Dataset: {ds_name}  |  Pipeline: {pipe_name}  |  Split: {fold_tag}")
+            print(f"  Dataset: {ds_name}  |  WL={window_len}  |  Pipeline: {pipe_name}  |  Split: {fold_tag}")
             print(f"  Train: {train_ds.X.shape}  Test: {test_ds.X.shape}  "
                   f"Classes: {train_ds.num_classes} {train_ds.labels}")
             print(f"{'='*70}")
 
             if test_ds.X.shape[0] == 0:
-                print(f"  SKIP â€” no test data")
+                print(f"  SKIP - no test data")
                 continue
 
             n_classes = train_ds.num_classes
@@ -2847,7 +2897,7 @@ def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
             models_template = make_ml_models()
 
             for model_name, _ in models_template:
-                run_key = f"{ds_name}__{pipe_name}__{model_name}"
+                run_key = f"{ds_name}__wl{window_len}__{pipe_name}__{model_name}"
                 print(f"\n  --- {model_name} ({fold_tag}) ---")
 
                 for seed_idx, seed in enumerate(SEEDS):
@@ -2857,24 +2907,16 @@ def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
                     fresh_models = make_ml_models()
                     model = [m for n, m in fresh_models if n == model_name][0]
 
-                    # -- Training: measure CPU time, wall time, peak memory --
-                    import gc; gc.collect()
-                    tracemalloc.start()
-
+                    # -- Training: measure CPU time, wall time --
                     t0_cpu = time.process_time()
                     t0_wall = time.perf_counter()
                     try:
                         model.fit(train_ds.X, train_ds.y)
                     except Exception as e:
-                        tracemalloc.stop()
                         print(f"    FIT ERROR (seed {seed}): {e}")
                         continue
                     train_cpu_s = time.process_time() - t0_cpu
                     train_wall_s = time.perf_counter() - t0_wall
-
-                    _, train_peak_bytes = tracemalloc.get_traced_memory()
-                    tracemalloc.stop()
-                    train_peak_mb = train_peak_bytes / (1024 * 1024)
 
                     # Model serialised size (bytes -> MB)
                     model_size_mb = len(pickle.dumps(model)) / (1024 * 1024)
@@ -2892,11 +2934,12 @@ def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
 
                     metrics = compute_all_metrics(
                         test_ds.y, y_pred, y_prob=y_prob, n_classes=n_classes)
+                    metrics['data_load_time_s'] = data_load_time
                     metrics['train_cpu_s'] = round(train_cpu_s, 3)
                     metrics['train_wall_s'] = round(train_wall_s, 3)
                     metrics['infer_wall_s'] = round(infer_wall_s, 4)
-                    metrics['train_peak_mb'] = round(train_peak_mb, 1)
                     metrics['model_size_mb'] = round(model_size_mb, 2)
+                    metrics['window_len'] = window_len
                     metrics['train_samples'] = train_ds.X.shape[0]
                     metrics['test_samples'] = test_ds.X.shape[0]
                     metrics['n_features'] = train_ds.X.shape[1]
@@ -2907,9 +2950,9 @@ def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
                           f"F1w={metrics['f1_weighted']}  "
                           f"Kappa={metrics['cohen_kappa']}  "
                           f"ECE={metrics.get('ece', 'N/A')}  "
+                          f"DataLoad={data_load_time:.2f}s  "
                           f"TrainCPU={train_cpu_s:.2f}s  Wall={train_wall_s:.2f}s  "
                           f"Infer={infer_wall_s:.3f}s  "
-                          f"PeakMem={train_peak_mb:.1f}MB  "
                           f"ModelSize={model_size_mb:.2f}MB")
 
                     # Accumulate per run_key
@@ -2925,73 +2968,44 @@ def run_ml_pipeline_experiment(data_root, window_len=100, guaranteed_sr=100,
             if not entry['seeds']:
                 continue
             agg = aggregate_seed_metrics(entry['seeds'])
+            # run_key: dataset__wl{N}__pipeline__model
             parts = run_key.split('__')
             agg['dataset'] = parts[0]
-            agg['pipeline'] = parts[1] if len(parts) > 1 else ''
-            agg['model'] = parts[2] if len(parts) > 2 else ''
+            agg['window_len'] = parts[1] if len(parts) > 1 else ''
+            agg['pipeline'] = parts[2] if len(parts) > 2 else ''
+            agg['model'] = parts[3] if len(parts) > 3 else ''
             entry['agg'] = agg
-            print(f"  [{run_key}] MEANÂ±STD  "
-                  f"Acc={agg.get('accuracy_mean','?')}Â±{agg.get('accuracy_std','?')}  "
-                  f"F1w={agg.get('f1_weighted_mean','?')}Â±{agg.get('f1_weighted_std','?')}")
+            print(f"  [{run_key}] "
+                  f"Acc={agg.get('accuracy_mean','?')}  "
+                  f"F1w={agg.get('f1_weighted_mean','?')}")
+            _save_ml_results()
 
-    # ---- Final comparison table (mean Â± std) ----
-    print(f"\n{'='*180}")
-    split_desc = f"CV {n_folds or 'auto'} folds Ã— {n_seeds} seeds" if cv_mode else f"{n_seeds} seeds"
-    print(f"FINAL ML COMPARISON: 4 Pipelines x 4 Datasets x 4 Models  ({split_desc})")
-    print(f"{'='*180}")
-    hdr = (f"{'Dataset':<25} {'Pipeline':<22} {'Model':<18} | "
-           f"{'Acc':>14} {'F1w':>14} {'Kappa':>14} {'MCC':>14} {'ECE':>14}")
+    # ---- Final comparison table ----
+    print(f"\n{'='*200}")
+    split_desc = f"CV {n_folds or 'auto'} folds x {n_seeds} seeds" if cv_mode else f"{n_seeds} seed(s)"
+    print(f"FINAL ML COMPARISON: {len(window_lens)} WLs x 4 Pipelines x 4 Datasets x 2 Models  ({split_desc})")
+    print(f"{'='*200}")
+    hdr = (f"{'Dataset':<25} {'WinLen':<10} {'Pipeline':<22} {'Model':<18} | "
+           f"{'Acc':>8} {'F1w':>8} {'Kappa':>8} {'DataLoad(s)':>12} {'Train(s)':>10} {'Infer(s)':>10}")
     print(hdr)
-    print("-" * 160)
+    print("-" * 180)
     for key in sorted(all_results.keys()):
         a = all_results[key]['agg']
-        def _fmt(k):
-            m = a.get(f'{k}_mean', float('nan'))
-            s = a.get(f'{k}_std', float('nan'))
-            return f"{m:.4f}Â±{s:.4f}"
-        print(f"{a['dataset']:<25} {a['pipeline']:<22} {a['model']:<18} | "
-              f"{_fmt('accuracy'):>14} {_fmt('f1_weighted'):>14} "
-              f"{_fmt('cohen_kappa'):>14} {_fmt('mcc'):>14} "
-              f"{_fmt('ece'):>14}")
+        s0 = all_results[key]['seeds'][0] if all_results[key]['seeds'] else {}
+        acc = a.get('accuracy_mean', float('nan'))
+        f1w = a.get('f1_weighted_mean', float('nan'))
+        kap = a.get('cohen_kappa_mean', float('nan'))
+        dl_t = s0.get('data_load_time_s', '')
+        tr_t = s0.get('train_wall_s', '')
+        inf_t = s0.get('infer_wall_s', '')
+        print(f"{a['dataset']:<25} {a['window_len']:<10} {a['pipeline']:<22} {a['model']:<18} | "
+              f"{acc:>8.4f} {f1w:>8.4f} {kap:>8.4f} "
+              f"{str(dl_t):>12} {str(tr_t):>10} {str(inf_t):>10}")
 
-    # ---- Save per-seed results to CSV (full unified columns) ----
-    import csv
-    results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'ml_results')
-    os.makedirs(results_dir, exist_ok=True)
-
-    csv_tag = '_cv' if cv_mode else ''
-    csv_path = os.path.join(results_dir, f'ml_pipeline_results_per_seed{csv_tag}.csv')
-    fieldnames = (['dataset', 'pipeline', 'model', 'fold', 'seed']
-                  + METRICS_CSV_FIELDS
-                  + ['train_cpu_s', 'train_wall_s', 'infer_wall_s',
-                     'train_peak_mb', 'model_size_mb',
-                     'train_samples', 'test_samples', 'n_features'])
-    with open(csv_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-        writer.writeheader()
-        for key in sorted(all_results.keys()):
-            entry = all_results[key]
-            for sm in entry['seeds']:
-                row = {
-                    'dataset': entry['agg']['dataset'],
-                    'pipeline': entry['agg']['pipeline'],
-                    'model': entry['agg']['model'],
-                }
-                row.update(sm)
-                writer.writerow(row)
-    print(f"\n[info] Per-seed results saved to {os.path.abspath(csv_path)}")
-
-    # Aggregated CSV
-    agg_csv_path = os.path.join(results_dir, f'ml_pipeline_results_aggregated{csv_tag}.csv')
-    agg_fields = ['dataset', 'pipeline', 'model', 'n_seeds']
-    for k in METRICS_CSV_FIELDS:
-        agg_fields.extend([f'{k}_mean', f'{k}_std'])
-    with open(agg_csv_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=agg_fields, extrasaction='ignore')
-        writer.writeheader()
-        for key in sorted(all_results.keys()):
-            writer.writerow(all_results[key]['agg'])
-    print(f"[info] Aggregated results saved to {os.path.abspath(agg_csv_path)}")
+    # ---- Final save ----
+    _save_ml_results()
+    print(f"\n[info] Final per-seed results: {os.path.abspath(csv_path)}")
+    print(f"[info] Final aggregated results: {os.path.abspath(agg_csv_path)}")
 
     return all_results
 
@@ -3004,7 +3018,8 @@ if __name__ == '__main__':
                         default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                              '..', '..', 'data'),
                         help='Root folder containing dataset subfolders')
-    parser.add_argument('--window', type=int, default=300, help='Window length')
+    parser.add_argument('--window-lens', type=int, nargs='+', default=[500, 1000, 2000],
+                        help='Window lengths to compare (default: 500 1000 2000)')
     parser.add_argument('--sr', type=int, default=150, help='Guaranteed sample rate')
     parser.add_argument('--var-window', type=int, default=20, help='Rolling variance window')
     parser.add_argument('--n-seeds', type=int, default=1,
@@ -3018,7 +3033,7 @@ if __name__ == '__main__':
 
     run_ml_pipeline_experiment(
         data_root=os.path.abspath(args.data_root),
-        window_len=args.window,
+        window_lens=args.window_lens,
         guaranteed_sr=args.sr,
         var_window=args.var_window,
         verbose=args.verbose,

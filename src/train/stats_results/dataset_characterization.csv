@@ -1,0 +1,9 @@
+dataset,n_classes,n_samples,n_features_raw,n_pca,silhouette,fisher
+home_har_data,7,4011,26000,50,-0.16,0.164
+home_occupation_data,3,8964,26000,50,0.412,0.594
+office_har_data,4,3260,26000,50,0.407,4.03
+office_localization_data,4,5980,26000,50,0.802,23.446
+Iris,3,150,4,4,0.503,6.63
+MNIST,10,10000,784,50,0.066,0.337
+CIFAR-10,10,10000,3072,50,-0.058,0.088
+CIFAR-100,100,10000,3072,50,-0.073,0.031

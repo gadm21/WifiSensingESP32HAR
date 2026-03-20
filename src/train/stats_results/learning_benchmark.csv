@@ -1,0 +1,6 @@
+category,dataset,wall_time_s,cpu_time_s,accuracy
+PCA+KNN,office_har_data,1.1992,6.3906,0.8564
+ML_RandomForest,office_har_data,2.2208,15.0469,0.9043
+ML_XGBoost,office_har_data,133.1882,520.7344,0.9144
+DL_Conv1D,office_har_data,86.5143,282.75,0.8917
+DL_MLP,office_har_data,71.1021,278.9375,0.8338

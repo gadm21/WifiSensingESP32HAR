@@ -1,0 +1,5 @@
+method,n_samples,wall_time_s,cpu_time_s
+RollingVariance_W20,50000,0.3771,0.2969
+RollingVariance_W200,50000,0.3667,0.2656
+RollingVariance_W2000,50000,0.3712,0.2812
+SHARP_Sanitization,500,0.8146,0.625
