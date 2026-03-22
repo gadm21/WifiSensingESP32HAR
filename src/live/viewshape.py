@@ -18,14 +18,7 @@ from collections import deque, Counter
 import os
 import pickle
 
-# PCA imports
-try:
-    from sklearn.decomposition import PCA
-    from sklearn.preprocessing import StandardScaler
-    PCA_AVAILABLE = True
-except ImportError:
-    PCA_AVAILABLE = False
-    print("[info] scikit-learn not available - PCA features disabled")
+# PCA imports removed
 
 # Ensure local utils.py (and ../train/utils.py as fallback) is importable
 _this_dir = os.path.dirname(os.path.abspath(__file__))
@@ -59,11 +52,7 @@ _occupation_window = 300   # occupation window size (overridden by model config)
 _occupation_var_window = 100  # rolling variance window (overridden by model config)
 _occupation_model_path = None  # path to the .pkl file for saving retrained models
 
-# Reference sample state (for static baseline comparison / overlay)
-_reference_sessions = {}       # {name: {'data': np.array, 'ts': np.array, 'meta': dict}}
-_ref_capturing = False         # True while capturing a reference baseline
-_ref_capture_start_seq = 0     # _data_seq when capture started
-_ref_capture_name = ''         # user-provided name for current capture
+# Reference sample state removed
 
 # Outlier / impulse detection state
 _outlier_z_threshold = 3.5     # z-score threshold for Hampel-style detection
@@ -91,59 +80,12 @@ SC_GROUPS = {
 }
 SC_GROUP_COLORS = {'low': '#42a5f5', 'mid': '#66bb6a', 'high': '#ef5350'}
 
-# PCA state
-_pca_model = None
-_pca_scaler = None
-_pca_components = 3  # Number of PCA components to visualize
-_pca_history = {'pc1': deque(maxlen=500), 'pc2': deque(maxlen=500), 'pc3': deque(maxlen=500), 'ts': deque(maxlen=500)}
-_pca_update_interval = 10  # Update PCA every N frames
-_pca_frame_counter = 0
+# PCA state removed
 
 
-def _update_pca(data):
-    """Update PCA model and compute components for current data."""
-    global _pca_model, _pca_scaler, _pca_frame_counter
-    
-    if not PCA_AVAILABLE or len(data) < 50:
-        return None
-    
-    _pca_frame_counter += 1
-    if _pca_frame_counter % _pca_update_interval != 0:
-        return _pca_model
-    
-    try:
-        # Prepare data for PCA
-        data_flat = data.reshape(data.shape[0], -1)  # Flatten each sample
-        
-        # Initialize or update scaler
-        if _pca_scaler is None:
-            _pca_scaler = StandardScaler()
-            data_scaled = _pca_scaler.fit_transform(data_flat)
-        else:
-            data_scaled = _pca_scaler.transform(data_flat)
-        
-        # Initialize or update PCA model (refit each time with recent data)
-        if _pca_model is None:
-            _pca_model = PCA(n_components=_pca_components, random_state=42)
-        
-        # Fit on recent data window
-        _pca_model.fit(data_scaled)
-        
-        # Compute components for current data
-        components = _pca_model.transform(data_scaled)
-        
-        # Update history
-        current_time = time.time()
-        for i in range(min(len(components), 50)):  # Limit to last 50 samples
-            _pca_history['pc1'].append(components[i, 0])
-            _pca_history['pc2'].append(components[i, 1])
-            _pca_history['pc3'].append(components[i, 2])
-            _pca_history['ts'].append(current_time - (len(components) - i - 1) * 0.1)
-        
-        return _pca_model
-    except Exception as e:
-        print(f"[pca] Error updating PCA: {e}")
-        return _pca_model
+def _update_pca_removed(data):
+    """PCA functionality removed."""
+    return None
 
 
 def _rolling_variance(mag, var_window):
@@ -227,41 +169,14 @@ def _apply_preproc(data, flags):
     return out
 
 
-def _save_reference(name, data, ts, meta=None):
-    """Save a reference session to the global dict and optionally to disk."""
-    global _reference_sessions
-    _reference_sessions[name] = {
-        'data': data.copy(),
-        'ts': ts.copy(),
-        'meta': meta or {},
-        'mean_profile': data.mean(axis=0),
-        'std_profile': data.std(axis=0),
-        'corr_matrix': np.corrcoef(data.T) if data.shape[0] > 2 else None,
-    }
-    # Persist to disk
-    ref_dir = os.path.join(_this_dir, 'references')
-    os.makedirs(ref_dir, exist_ok=True)
-    fpath = os.path.join(ref_dir, f'{name}.npz')
-    np.savez_compressed(fpath, data=data, ts=ts)
-    print(f"[ref] Saved reference '{name}' ({data.shape[0]} samples) -> {fpath}")
+def _save_reference_removed(name, data, ts, meta=None):
+    """Reference functionality removed."""
+    pass
 
 
-def _load_reference(fpath):
-    """Load a reference session from an .npz file."""
-    d = np.load(fpath)
-    data = d['data']
-    ts = d['ts']
-    name = os.path.splitext(os.path.basename(fpath))[0]
-    _reference_sessions[name] = {
-        'data': data,
-        'ts': ts,
-        'meta': {},
-        'mean_profile': data.mean(axis=0),
-        'std_profile': data.std(axis=0),
-        'corr_matrix': np.corrcoef(data.T) if data.shape[0] > 2 else None,
-    }
-    print(f"[ref] Loaded reference '{name}' ({data.shape[0]} samples)")
-    return name
+def _load_reference_removed(fpath):
+    """Reference functionality removed."""
+    return None
 
 
 def _resample_to_sr(raw_data, raw_ts, target_sr):
@@ -678,17 +593,15 @@ def create_visualization():
     v1_axes = [ax_heat, ax_cbar1, ax_lines, ax_mean]
 
     # =================================================================
-    # VIEW 2: Analytics (PCA-based)
+    # VIEW 2: Analytics (simplified)
     # =================================================================
-    gs2 = fig.add_gridspec(3, 3, height_ratios=[1.0, 1.5, 1.8],
-                           width_ratios=[1.1, 0.9, 1.0],
+    gs2 = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.5],
+                           width_ratios=[1.1, 0.9],
                            left=L, right=R, top=T, bottom=B,
                            hspace=0.40, wspace=0.18)
     ax_timeline = fig.add_subplot(gs2[0, :])   # activity timeline (full width)
-    ax_pca_2d = fig.add_subplot(gs2[1, 0])    # PCA 2D scatter plot
-    ax_pca_3d = fig.add_subplot(gs2[1, 1])    # PCA 3D projection
-    ax_pca_var = fig.add_subplot(gs2[1, 2])    # PCA variance explained
-    ax_pca_ctrl = fig.add_subplot(gs2[2, :])   # PCA controls (full width)
+    ax_stats = fig.add_subplot(gs2[1, 0])     # basic statistics
+    ax_ctrl = fig.add_subplot(gs2[1, 1])      # control panel
 
     # ── Activity timeline (simplified) ──
     ax_timeline.set_xlim(0, SLIDING_WINDOW_SEC)
@@ -704,68 +617,43 @@ def create_visualization():
     timeline_scatter = ax_timeline.scatter([], [], s=60, c='#00e5ff', marker='o',
                                            edgecolors='none', alpha=0.85, zorder=5)
 
-    # ── PCA 2D scatter plot ──
-    ax_pca_2d.set_title('PCA Components (PC1 vs PC2)', fontsize=FONT_TITLE,
-                        color='#e0e0e0', fontweight='semibold', pad=8)
-    ax_pca_2d.set_xlabel('PC1', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_pca_2d.set_ylabel('PC2', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_pca_2d.tick_params(colors='#90a4ae', labelsize=FONT_TICK)
-    ax_pca_2d.grid(True, alpha=0.12, color='#455a64', linewidth=0.5)
-    _style_ax(ax_pca_2d)
-    pca_2d_scatter = ax_pca_2d.scatter([], [], c=[], cmap='viridis', s=30, alpha=0.7)
-
-    # ── PCA 3D projection (simulated) ──
-    ax_pca_3d.set_title('PCA Time Series', fontsize=FONT_TITLE,
-                        color='#e0e0e0', fontweight='semibold', pad=8)
-    ax_pca_3d.set_xlabel('Time (s)', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_pca_3d.set_ylabel('Component Value', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_pca_3d.tick_params(colors='#90a4ae', labelsize=FONT_TICK)
-    ax_pca_3d.grid(True, alpha=0.12, color='#455a64', linewidth=0.5)
-    _style_ax(ax_pca_3d)
-    pca_pc1_line, = ax_pca_3d.plot([], [], color='#ff6b6b', linewidth=2, label='PC1', alpha=0.8)
-    pca_pc2_line, = ax_pca_3d.plot([], [], color='#4ecdc4', linewidth=2, label='PC2', alpha=0.8)
-    pca_pc3_line, = ax_pca_3d.plot([], [], color='#45b7d1', linewidth=2, label='PC3', alpha=0.8)
-    ax_pca_3d.legend(loc='upper right', fontsize=FONT_LEGEND - 1, framealpha=0.4)
-
-    # ── PCA variance explained ──
-    ax_pca_var.set_title('PCA Variance Explained', fontsize=FONT_TITLE,
-                         color='#e0e0e0', fontweight='semibold', pad=8)
-    ax_pca_var.set_xlabel('Principal Component', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_pca_var.set_ylabel('Variance Explained (%)', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_pca_var.tick_params(colors='#90a4ae', labelsize=FONT_TICK)
-    ax_pca_var.grid(True, alpha=0.12, color='#455a64', linewidth=0.5, axis='y')
-    _style_ax(ax_pca_var)
-    pca_var_bars = ax_pca_var.bar([], [], color=['#ff6b6b', '#4ecdc4', '#45b7d1'], alpha=0.8)
-    pca_info_text = ax_pca_var.text(0.02, 0.95, '', transform=ax_pca_var.transAxes,
+    # ── Basic statistics ──
+    ax_stats.set_title('Signal Statistics', fontsize=FONT_TITLE,
+                       color='#e0e0e0', fontweight='semibold', pad=8)
+    ax_stats.set_xlabel('Metric', fontsize=FONT_LABEL, color='#b0bec5')
+    ax_stats.set_ylabel('Value', fontsize=FONT_LABEL, color='#b0bec5')
+    ax_stats.tick_params(colors='#90a4ae', labelsize=FONT_TICK)
+    ax_stats.grid(True, alpha=0.12, color='#455a64', linewidth=0.5)
+    _style_ax(ax_stats)
+    stats_bars = ax_stats.bar([], [], color=['#00e5ff', '#66bb6a', '#ff6b6b'], alpha=0.8)
+    stats_info_text = ax_stats.text(0.02, 0.95, '', transform=ax_stats.transAxes,
                                    fontsize=FONT_TICK - 1, color='#80cbc4', va='top', family='monospace',
                                    bbox=dict(boxstyle='round,pad=0.2', facecolor='#0d1117', alpha=0.7))
 
-    # ── PCA control panel ──
-    ax_pca_ctrl.axis('off')
-    ax_pca_ctrl.set_facecolor('#0d1117')
-    for sp in ax_pca_ctrl.spines.values():
+    # ── Control panel ──
+    ax_ctrl.axis('off')
+    ax_ctrl.set_facecolor('#0d1117')
+    for sp in ax_ctrl.spines.values():
         sp.set_color('#1e2a38'); sp.set_linewidth(1)
 
-    # PCA reset button
-    ax_pca_ctrl.text(0.02, 0.92, 'PCA Controls:', transform=ax_pca_ctrl.transAxes,
-                      fontsize=FONT_TICK + 1, color='#58a6ff', va='top', fontweight='bold')
+    ax_ctrl.text(0.02, 0.92, 'Analytics Controls:', transform=ax_ctrl.transAxes,
+                  fontsize=FONT_TICK + 1, color='#58a6ff', va='top', fontweight='bold')
 
-    pca_status_text = ax_pca_ctrl.text(
-        0.5, 0.5, 'PCA initializing...', transform=ax_pca_ctrl.transAxes,
+    analytics_status_text = ax_ctrl.text(
+        0.5, 0.5, 'Analytics ready...', transform=ax_ctrl.transAxes,
         fontsize=FONT_TICK + 2, color='#66bb6a', va='center', ha='center',
         fontweight='bold', family='monospace')
 
-    v2_axes = [ax_timeline, ax_pca_2d, ax_pca_3d, ax_pca_var, ax_pca_ctrl]
+    v2_axes = [ax_timeline, ax_stats, ax_ctrl]
 
     # =================================================================
-    # VIEW 3: Signal Quality + PCA
+    # VIEW 3: Signal Quality
     # =================================================================
-    gs3 = fig.add_gridspec(2, 3, height_ratios=[1.0, 1.0], width_ratios=[1, 1, 1],
+    gs3 = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.0], width_ratios=[1, 1],
                            left=L, right=R, top=T, bottom=B,
                            hspace=0.38, wspace=0.22)
     ax_profile = fig.add_subplot(gs3[0, 0])
     ax_hist    = fig.add_subplot(gs3[0, 1])
-    ax_pca_comp = fig.add_subplot(gs3[0, 2])   # PCA component comparison
     ax_varheat = fig.add_subplot(gs3[1, :])
 
     profile_bars = ax_profile.bar(
@@ -808,23 +696,7 @@ def create_visualization():
     ax_varheat.tick_params(colors='#90a4ae', labelsize=FONT_TICK)
     _style_ax(ax_varheat)
 
-    # ── PCA component comparison ──
-    ax_pca_comp.set_title('PCA Component Analysis', fontsize=FONT_TITLE,
-                          color='#e0e0e0', fontweight='semibold', pad=8)
-    ax_pca_comp.set_xlabel('Subcarrier Index', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_pca_comp.set_ylabel('Component Weight', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_pca_comp.tick_params(colors='#90a4ae', labelsize=FONT_TICK)
-    ax_pca_comp.grid(True, alpha=0.12, color='#455a64', linewidth=0.5)
-    _style_ax(ax_pca_comp)
-    pca_comp_lines = []
-    pca_comp_colors = ['#ff6b6b', '#4ecdc4', '#45b7d1']
-    for i in range(3):
-        line, = ax_pca_comp.plot([], [], color=pca_comp_colors[i], linewidth=2, 
-                               label=f'PC{i+1}', alpha=0.8)
-        pca_comp_lines.append(line)
-    ax_pca_comp.legend(loc='upper right', fontsize=FONT_LEGEND - 1, framealpha=0.4)
-
-    v3_axes = [ax_profile, ax_hist, ax_pca_comp, ax_varheat]
+    v3_axes = [ax_profile, ax_hist, ax_varheat]
 
     # =================================================================
     # VIEW 4: Diagnostics
@@ -836,8 +708,7 @@ def create_visualization():
     ax_temporal  = fig.add_subplot(gs4[0, 0])   # Temporal stability heatmap
     ax_scgroups  = fig.add_subplot(gs4[0, 1])   # Subcarrier group sensitivity
     ax_outliers  = fig.add_subplot(gs4[1, 0])   # Outlier impulse rate
-    ax_refoverlay = fig.add_subplot(gs4[1, 1])  # Reference overlay profile
-    ax_diag_ctrl = fig.add_subplot(gs4[2, :])   # Diagnostics control panel
+    ax_diag_ctrl = fig.add_subplot(gs4[1, 1])   # Diagnostics control panel
 
     # ── Temporal stability heatmap (rolling mean per subcarrier) ──
     stab_blank = np.zeros((NUM_SUBCARRIERS, STABILITY_HEATMAP_COLS))
@@ -896,28 +767,6 @@ def create_visualization():
         family='monospace',
         bbox=dict(boxstyle='round,pad=0.2', facecolor='#0d1117', alpha=0.7))
 
-    # ── Reference overlay (mean profile comparison) ──
-    live_profile_line, = ax_refoverlay.plot([], [], color='#00e5ff',
-                                             linewidth=2.0, label='Live', alpha=0.9)
-    live_fill_hi = None
-    live_fill_lo = None
-    # Placeholder for reference lines (added dynamically)
-    ref_profile_lines = {}  # {name: line_artist}
-    ax_refoverlay.set_xlim(-0.5, NUM_SUBCARRIERS - 0.5)
-    ax_refoverlay.set_ylim(AMP_MIN, AMP_MAX)
-    ax_refoverlay.set_xlabel('Subcarrier Index', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_refoverlay.set_ylabel('Mean Amplitude', fontsize=FONT_LABEL, color='#b0bec5')
-    ax_refoverlay.set_title('Reference Overlay (Live vs Baseline)',
-                             fontsize=FONT_TITLE, color='#e0e0e0',
-                             fontweight='semibold', pad=8)
-    ax_refoverlay.tick_params(colors='#90a4ae', labelsize=FONT_TICK)
-    ax_refoverlay.grid(True, alpha=0.12, color='#455a64', linewidth=0.5)
-    ax_refoverlay.legend(loc='upper right', fontsize=FONT_LEGEND - 1, framealpha=0.4)
-    _style_ax(ax_refoverlay)
-    ref_diff_text = ax_refoverlay.text(
-        0.02, 0.95, '', transform=ax_refoverlay.transAxes,
-        fontsize=FONT_TICK - 1, color='#ce93d8', va='top', family='monospace',
-        bbox=dict(boxstyle='round,pad=0.2', facecolor='#0d1117', alpha=0.7))
 
     # ── Diagnostics control panel ──
     ax_diag_ctrl.axis('off')
@@ -925,57 +774,21 @@ def create_visualization():
     for sp in ax_diag_ctrl.spines.values():
         sp.set_color('#1e2a38'); sp.set_linewidth(1)
 
-    # Force layout for positioning
-    fig.canvas.draw_idle()
-    fig.canvas.flush_events()
-    try:
-        fig.get_layout_engine().execute(fig)
-    except Exception:
-        pass
-    diag_pos = ax_diag_ctrl.get_position()
-    dx0, dy0, dw, dh = diag_pos.x0, diag_pos.y0, diag_pos.width, diag_pos.height
-
-    # Reference capture controls
-    ax_diag_ctrl.text(0.01, 0.92, 'Reference:', transform=ax_diag_ctrl.transAxes,
-                      fontsize=FONT_TICK + 1, color='#ce93d8', va='top',
-                      fontweight='bold')
-
-    dbtn_w = 0.07 * dw
-    dbtn_h = 0.38 * dh
-    dbtn_y = dy0 + 0.08 * dh
-
-    ax_ref_capture = fig.add_axes([dx0 + 0.01 * dw, dbtn_y, dbtn_w * 1.2, dbtn_h])
-    btn_ref_capture = Button(ax_ref_capture, 'CAPTURE', color='#1a2332',
-                              hovercolor='#2a4060')
-    btn_ref_capture.label.set_color('#ce93d8')
-    btn_ref_capture.label.set_fontsize(FONT_BTN)
-    btn_ref_capture.label.set_fontweight('bold')
-
-    ax_ref_load = fig.add_axes([dx0 + 0.01 * dw + dbtn_w * 1.25, dbtn_y,
-                                 dbtn_w * 1.0, dbtn_h])
-    btn_ref_load = Button(ax_ref_load, 'LOAD', color='#1a2332',
-                           hovercolor='#2a4060')
-    btn_ref_load.label.set_color('#b388ff')
-    btn_ref_load.label.set_fontsize(FONT_BTN)
-
-    ax_ref_clear = fig.add_axes([dx0 + 0.01 * dw + dbtn_w * 2.3, dbtn_y,
-                                  dbtn_w * 0.9, dbtn_h])
-    btn_ref_clear = Button(ax_ref_clear, 'CLR', color='#1a2332',
-                            hovercolor='#2a4060')
-    btn_ref_clear.label.set_color('#f44336')
-    btn_ref_clear.label.set_fontsize(FONT_BTN)
-
     # Preprocessing toggle controls
-    ax_diag_ctrl.text(0.30, 0.92, 'Preprocess:', transform=ax_diag_ctrl.transAxes,
+    ax_diag_ctrl.text(0.01, 0.92, 'Preprocess:', transform=ax_diag_ctrl.transAxes,
                       fontsize=FONT_TICK + 1, color='#ffab40', va='top',
                       fontweight='bold')
+
+    dbtn_w = 0.07 * 0.8
+    dbtn_h = 0.38 * 0.8
+    dbtn_y = 0.08
 
     pp_names = ['DC Remove', 'Low-Pass', 'Relative']
     pp_keys  = ['dc_removal', 'lowpass', 'relative_csi']
     pp_btn_axes = []
     pp_btns = []
     for pi, (pp_name, pp_key) in enumerate(zip(pp_names, pp_keys)):
-        px = dx0 + 0.30 * dw + pi * (dbtn_w * 1.25 + 0.003)
+        px = 0.01 + pi * (dbtn_w * 1.25 + 0.003)
         ax_pp = fig.add_axes([px, dbtn_y, dbtn_w * 1.2, dbtn_h])
         b = Button(ax_pp, pp_name, color='#1a2332', hovercolor='#2a4060')
         b.label.set_color('#586069')
@@ -989,15 +802,7 @@ def create_visualization():
         fontsize=FONT_TICK + 1, color='#66bb6a', va='center', ha='center',
         fontweight='bold', family='monospace')
 
-    # Reference list text
-    ref_list_text = ax_diag_ctrl.text(
-        0.88, 0.92, 'No references', transform=ax_diag_ctrl.transAxes,
-        fontsize=FONT_TICK - 1, color='#586069', va='top', ha='center',
-        family='monospace')
-
-    v4_axes = [ax_temporal, ax_scgroups, ax_outliers, ax_refoverlay,
-               ax_diag_ctrl, ax_ref_capture, ax_ref_load, ax_ref_clear,
-               *pp_btn_axes]
+    v4_axes = [ax_temporal, ax_scgroups, ax_outliers, ax_diag_ctrl, *pp_btn_axes]
 
     # Start with only V1 visible
     _set_axes_visible(v2_axes, False)
@@ -1201,144 +1006,8 @@ def create_visualization():
     btn_rec_toggle.on_clicked(toggle_recording)
 
     # =================================================================
-    # PCA callbacks (placeholder for future controls)
+    # Diagnostics callbacks (preproc only)
     # =================================================================
-    # PCA controls can be added here if needed
-
-    # =================================================================
-    # Diagnostics callbacks (reference capture, load, clear, preproc)
-    # =================================================================
-    _ref_colors_cycle = ['#ff7043', '#ab47bc', '#26a69a', '#ffa726', '#ec407a']
-
-    def _update_ref_list_text():
-        """Update reference list display in diagnostics control panel."""
-        if _reference_sessions:
-            lines = []
-            for rname, rdata in _reference_sessions.items():
-                n = rdata['data'].shape[0]
-                lines.append(f'{rname}: {n:,} samp')
-            ref_list_text.set_text('\n'.join(lines))
-            ref_list_text.set_color('#ce93d8')
-        else:
-            ref_list_text.set_text('No references')
-            ref_list_text.set_color('#586069')
-
-    def _update_ref_overlay_lines():
-        """Add/update reference profile lines on the overlay plot."""
-        for rname, rdata in _reference_sessions.items():
-            if rname not in ref_profile_lines:
-                ci = len(ref_profile_lines) % len(_ref_colors_cycle)
-                col = _ref_colors_cycle[ci]
-                ln, = ax_refoverlay.plot(
-                    np.arange(len(rdata['mean_profile'])),
-                    rdata['mean_profile'],
-                    color=col, linewidth=1.5, linestyle='--',
-                    label=rname, alpha=0.8)
-                ref_profile_lines[rname] = ln
-            else:
-                ref_profile_lines[rname].set_ydata(rdata['mean_profile'])
-        ax_refoverlay.legend(loc='upper right', fontsize=FONT_LEGEND - 1,
-                              framealpha=0.4)
-
-    def _toggle_ref_capture(event):
-        global _ref_capturing, _ref_capture_start_seq, _ref_capture_name
-        try:
-            if _ref_capturing:
-                _ref_capturing = False
-                btn_ref_capture.label.set_text('CAPTURE')
-                btn_ref_capture.label.set_color('#ce93d8')
-
-                n_new = _data_seq - _ref_capture_start_seq
-                if n_new > 10 and len(_data_buffer) > 10:
-                    grab_n = min(n_new, len(_data_buffer))
-                    ref_data = np.array(list(_data_buffer)[-grab_n:])
-                    ref_ts = np.array(list(_timestamps)[-grab_n:])
-                    name = _ref_capture_name or f'ref_{int(time.time())}'
-                    _save_reference(name, ref_data, ref_ts, meta={
-                        'duration_s': float(ref_ts[-1] - ref_ts[0]) if len(ref_ts) > 1 else 0,
-                        'n_packets': ref_data.shape[0],
-                    })
-                    _update_ref_list_text()
-                    _update_ref_overlay_lines()
-                    diag_status_text.set_text(f'Saved: {name} ({ref_data.shape[0]:,} samp)')
-                    diag_status_text.set_color('#66bb6a')
-                    print(f"[ref] Capture stopped. Saved '{name}' with {ref_data.shape[0]} samples")
-                else:
-                    diag_status_text.set_text('Too few samples!')
-                    diag_status_text.set_color('#f44336')
-            else:
-                import tkinter.simpledialog as sd
-                root = fig.canvas.get_tk_widget().winfo_toplevel()
-                default = f'static_{len(_reference_sessions) + 1}'
-                name = sd.askstring('Reference Capture',
-                                    'Enter reference name:',
-                                    initialvalue=default, parent=root)
-                if not name:
-                    return
-                _ref_capture_name = name.strip()
-                _ref_capturing = True
-                _ref_capture_start_seq = _data_seq
-                btn_ref_capture.label.set_text('STOP')
-                btn_ref_capture.label.set_color('#f44336')
-                diag_status_text.set_text(f'Capturing: {_ref_capture_name}...')
-                diag_status_text.set_color('#f44336')
-                print(f"[ref] Capturing reference '{_ref_capture_name}'...")
-        except Exception as e:
-            print(f'[ref] Error in capture toggle: {e}')
-            diag_status_text.set_text(f'Error: {e}')
-            diag_status_text.set_color('#f44336')
-        fig.canvas.draw_idle()
-
-    btn_ref_capture.on_clicked(_toggle_ref_capture)
-
-    def _load_ref_file(event):
-        try:
-            import tkinter.filedialog as fd
-            root = fig.canvas.get_tk_widget().winfo_toplevel()
-            ref_dir = os.path.join(_this_dir, 'references')
-            fpath = fd.askopenfilename(
-                title='Load Reference',
-                initialdir=ref_dir if os.path.isdir(ref_dir) else _this_dir,
-                filetypes=[('NumPy archives', '*.npz'), ('All files', '*.*')],
-                parent=root)
-            if fpath:
-                try:
-                    name = _load_reference(fpath)
-                    _update_ref_list_text()
-                    _update_ref_overlay_lines()
-                    diag_status_text.set_text(f'Loaded: {name}')
-                    diag_status_text.set_color('#66bb6a')
-                except Exception as e:
-                    diag_status_text.set_text(f'Load error: {e}')
-                    diag_status_text.set_color('#f44336')
-                    print(f"[ref] Load error: {e}")
-        except Exception as e:
-            print(f'[ref] File dialog error: {e}')
-        fig.canvas.draw_idle()
-
-    btn_ref_load.on_clicked(_load_ref_file)
-
-    def _clear_refs(event):
-        global _reference_sessions
-        try:
-            for ln in ref_profile_lines.values():
-                ln.remove()
-            ref_profile_lines.clear()
-            _reference_sessions = {}
-            _update_ref_list_text()
-            ax_refoverlay.legend(loc='upper right', fontsize=FONT_LEGEND - 1,
-                                  framealpha=0.4)
-            ref_diff_text.set_text('')
-            diag_status_text.set_text('References cleared')
-            diag_status_text.set_color('#78909c')
-            print("[ref] All references cleared")
-        except Exception as e:
-            print(f'[ref] Clear error: {e}')
-        fig.canvas.draw_idle()
-
-    btn_ref_clear.on_clicked(_clear_refs)
-
-    # Preprocessing toggle callbacks
     def _make_pp_toggle(pp_key, pp_idx):
         def _cb(event):
             _preproc_flags[pp_key] = not _preproc_flags[pp_key]
@@ -1355,20 +1024,6 @@ def create_visualization():
     for pi, pp_key in enumerate(pp_keys):
         pp_btns[pi].on_clicked(_make_pp_toggle(pp_key, pi))
 
-    # Auto-load any existing references from disk
-    ref_dir = os.path.join(_this_dir, 'references')
-    if os.path.isdir(ref_dir):
-        for fn in sorted(os.listdir(ref_dir)):
-            if fn.endswith('.npz'):
-                try:
-                    _load_reference(os.path.join(ref_dir, fn))
-                except Exception:
-                    pass
-        if _reference_sessions:
-            _update_ref_list_text()
-            _update_ref_overlay_lines()
-            print(f"[ref] Auto-loaded {len(_reference_sessions)} reference(s)")
-
     artists = {
         'im': im, 'sc_lines': sc_lines,
         'mean_line': mean_line, 'std_hi': std_hi_line, 'std_lo': std_lo_line,
@@ -1376,15 +1031,10 @@ def create_visualization():
         'profile_bars': profile_bars,
         'hist_patches': hist_patches, 'hist_stats_text': hist_stats_text,
         'var_im': var_im,
-        # PCA artists
-        'pca_2d_scatter': pca_2d_scatter,
-        'pca_pc1_line': pca_pc1_line,
-        'pca_pc2_line': pca_pc2_line,
-        'pca_pc3_line': pca_pc3_line,
-        'pca_var_bars': pca_var_bars,
-        'pca_info_text': pca_info_text,
-        'pca_status_text': pca_status_text,
-        'pca_comp_lines': pca_comp_lines,
+        # Analytics artists
+        'stats_bars': stats_bars,
+        'stats_info_text': stats_info_text,
+        'analytics_status_text': analytics_status_text,
         # Activity timeline
         'timeline_scatter': timeline_scatter,
         'ax_timeline': ax_timeline,
@@ -1395,23 +1045,18 @@ def create_visualization():
         'scg_info_text': scg_info_text,
         'outlier_line': outlier_line,
         'outlier_stats_text': outlier_stats_text,
-        'live_profile_line': live_profile_line,
-        'ref_profile_lines': ref_profile_lines,
-        'ref_diff_text': ref_diff_text,
         'diag_status_text': diag_status_text,
         'diag_frame_skip': [0],
     }
     fig._csi_buttons = (btn_v1, btn_v2, btn_v3, btn_v4, btn_snap, btn_rec_toggle,
-                        ax_toolbar_bg,
-                        btn_ref_capture, btn_ref_load, btn_ref_clear,
-                        *_win_btns, *pp_btns)
+                        ax_toolbar_bg, *_win_btns, *pp_btns)
     views = {
         'ax_ts': [ax_heat, ax_lines, ax_mean],
         'ax_timeline': ax_timeline,
-        'ax_pca_2d': ax_pca_2d, 'ax_pca_3d': ax_pca_3d, 'ax_pca_var': ax_pca_var,
-        'ax_profile': ax_profile, 'ax_hist': ax_hist, 'ax_pca_comp': ax_pca_comp, 'ax_varheat': ax_varheat,
+        'ax_stats': ax_stats,
+        'ax_profile': ax_profile, 'ax_hist': ax_hist, 'ax_varheat': ax_varheat,
         'ax_temporal': ax_temporal, 'ax_scgroups': ax_scgroups,
-        'ax_outliers': ax_outliers, 'ax_refoverlay': ax_refoverlay,
+        'ax_outliers': ax_outliers,
     }
     return fig, artists, views, frequencies
 
@@ -1452,8 +1097,8 @@ def update_once(fig, artists, views, last_seq, fps_times):
 
     ncols = min(NUM_SUBCARRIERS, data_win.shape[1])
 
-    # ---- PCA computation ----
-    pca_model = _update_pca(data_win[:, :ncols])
+    # ---- PCA computation removed ----
+    pca_model = None
 
     step = max(1, len(ts_win) // 250)
     ts_m = ts_win[::step]
@@ -1492,7 +1137,7 @@ def update_once(fig, artists, views, last_seq, fps_times):
         for ax in views['ax_ts']:
             ax.set_xlim(t_start, t_end)
 
-    # ---- V2: PCA Analytics + Activity Timeline ----
+    # ---- V2: Analytics + Activity Timeline ----
     if _active_view == 'analytics':
         # Update activity timeline
         if len(ts_win) > 0:
@@ -1500,64 +1145,34 @@ def update_once(fig, artists, views, last_seq, fps_times):
             artists['timeline_scatter'].set_offsets(offsets)
             artists['ax_timeline'].set_xlim(t_start, t_end)
         
-        # Update PCA visualizations
-        if pca_model is not None and len(_pca_history['ts']) > 0:
-            # Update PCA 2D scatter
-            if len(_pca_history['pc1']) > 0:
-                pc1_vals = np.array(_pca_history['pc1'])
-                pc2_vals = np.array(_pca_history['pc2'])
-                colors = np.arange(len(pc1_vals))  # Color by time
-                artists['pca_2d_scatter'].set_offsets(np.c_[pc1_vals, pc2_vals])
-                artists['pca_2d_scatter'].set_array(colors)
-                
-                # Fixed axes ranges
-                views['ax_pca_2d'].set_xlim(-10, 10)
-                views['ax_pca_2d'].set_ylim(-10, 10)
+        # Update basic statistics
+        if len(data_win) > 0:
+            # Calculate basic statistics
+            mean_amp = float(data_win.mean())
+            std_amp = float(data_win.std())
+            max_amp = float(data_win.max())
+            min_amp = float(data_win.min())
             
-            # Update PCA time series
-            if len(_pca_history['ts']) > 0:
-                ts_vals = np.array(_pca_history['ts'])
-                pc1_vals = np.array(_pca_history['pc1'])
-                pc2_vals = np.array(_pca_history['pc2'])
-                pc3_vals = np.array(_pca_history['pc3'])
-                
-                artists['pca_pc1_line'].set_data(ts_vals, pc1_vals)
-                artists['pca_pc2_line'].set_data(ts_vals, pc2_vals)
-                artists['pca_pc3_line'].set_data(ts_vals, pc3_vals)
-                
-                # Fixed time series axes
-                views['ax_pca_3d'].set_xlim(ts_vals.min(), ts_vals.max())
-                views['ax_pca_3d'].set_ylim(-10, 10)  # Fixed range for component values
+            # Update bar chart
+            stats_values = [mean_amp, std_amp, max_amp - min_amp]
+            stats_labels = ['Mean', 'Std', 'Range']
             
-            # Update variance explained
-            if hasattr(pca_model, 'explained_variance_ratio_'):
-                variance_ratios = pca_model.explained_variance_ratio_ * 100
-                components = ['PC1', 'PC2', 'PC3']
-                
-                # Update individual bars
-                for i, (bar, var) in enumerate(zip(artists['pca_var_bars'], variance_ratios)):
-                    bar.set_height(var)
-                    bar.set_x(i)
-                    bar.set_width(0.6)
-                
-                views['ax_pca_var'].set_xlim(-0.5, len(components) - 0.5)
-                views['ax_pca_var'].set_ylim(0, 100)  # Fixed 0-100% range
-                
-                total_var = sum(variance_ratios)
-                artists['pca_info_text'].set_text(
-                    f'Total: {total_var:.1f}%\n'
-                    f'PC1: {variance_ratios[0]:.1f}%\n'
-                    f'PC2: {variance_ratios[1]:.1f}%\n'
-                    f'PC3: {variance_ratios[2]:.1f}%'
-                )
-                
-                artists['pca_status_text'].set_text('PCA Active')
-                artists['pca_status_text'].set_color('#66bb6a')
-        else:
-            artists['pca_status_text'].set_text('PCA Learning...')
-            artists['pca_status_text'].set_color('#ffab40')
+            for i, (bar, val) in enumerate(zip(artists['stats_bars'], stats_values)):
+                bar.set_height(val)
+                bar.set_x(i)
+                bar.set_width(0.6)
+            
+            views['ax_stats'].set_xlim(-0.5, len(stats_values) - 0.5)
+            views['ax_stats'].set_ylim(0, max(stats_values) * 1.2)
+            
+            artists['stats_info_text'].set_text(
+                f'Mean: {mean_amp:.1f}\nStd: {std_amp:.1f}\nRange: {max_amp - min_amp:.1f}'
+            )
+            
+            artists['analytics_status_text'].set_text('Analytics Active')
+            artists['analytics_status_text'].set_color('#66bb6a')
 
-    # ---- V3: Signal Quality + PCA Components ----
+    # ---- V3: Signal Quality ----
     if _active_view == 'sigquality':
         sc_means = data_win[:, :ncols].mean(axis=0)
         for bar, val in zip(artists['profile_bars'], sc_means):
@@ -1586,20 +1201,6 @@ def update_once(fig, artists, views, last_seq, fps_times):
         artists['var_im'].set_data(var_bins.T)
         artists['var_im'].set_extent([t_start, t_end, 0, NUM_SUBCARRIERS])
         views['ax_varheat'].set_xlim(t_start, t_end)
-        
-        # Update PCA component comparison
-        if pca_model is not None and hasattr(pca_model, 'components_'):
-            components = pca_model.components_[:3]  # First 3 components
-            for i, (line, comp) in enumerate(zip(artists['pca_comp_lines'], components)):
-                line.set_data(range(ncols), comp[:ncols])
-            views['ax_pca_comp'].set_xlim(-0.5, ncols - 0.5)
-            
-            # Auto-scale y-axis for component weights
-            all_weights = components[:, :ncols].flatten()
-            if len(all_weights) > 0:
-                weight_range = all_weights.max() - all_weights.min()
-                margin = 0.1 * max(weight_range, 0.01)
-                views['ax_pca_comp'].set_ylim(all_weights.min() - margin, all_weights.max() + margin)
 
     # ---- V4: Diagnostics ----
     if _active_view == 'diagnostics':
@@ -1716,52 +1317,6 @@ def update_once(fig, artists, views, last_seq, fps_times):
                             f'Rate: {mean_rate:.1f}/s\n'
                             f'z>{_outlier_z_threshold}')
 
-            # ── Reference overlay (live mean profile vs references) ──
-            live_mean = diag_data.mean(axis=0)
-            live_std = diag_data.std(axis=0)
-            sc_x = np.arange(diag_ncols)
-            artists['live_profile_line'].set_data(sc_x, live_mean)
-
-            diff_lines = []
-            for rname, rdata in _reference_sessions.items():
-                ref_mean = rdata['mean_profile']
-                min_len = min(len(live_mean), len(ref_mean))
-                if min_len > 0:
-                    l2_dist = np.sqrt(((live_mean[:min_len] - ref_mean[:min_len]) ** 2).mean())
-                    mean_shift = (live_mean[:min_len] - ref_mean[:min_len]).mean()
-                    # Frobenius norm on correlation matrices if available
-                    frob_str = ''
-                    if rdata.get('corr_matrix') is not None and len(diag_data) > 10:
-                        try:
-                            live_corr = np.corrcoef(diag_data[:, :min_len].T)
-                            ref_corr = rdata['corr_matrix'][:min_len, :min_len]
-                            frob = np.linalg.norm(live_corr - ref_corr, 'fro')
-                            frob_str = f' Frob={frob:.1f}'
-                        except Exception:
-                            pass
-                    # Skewness / kurtosis comparison
-                    try:
-                        from scipy.stats import skew as _skew, kurtosis as _kurt
-                        live_skew = float(_skew(live_mean[:min_len]))
-                        ref_skew = float(_skew(ref_mean[:min_len]))
-                        live_kurt = float(_kurt(live_mean[:min_len]))
-                        ref_kurt = float(_kurt(ref_mean[:min_len]))
-                        sk_str = f' dSkew={live_skew - ref_skew:+.2f} dKurt={live_kurt - ref_kurt:+.2f}'
-                    except Exception:
-                        sk_str = ''
-                    diff_lines.append(
-                        f'{rname}: L2={l2_dist:.2f} shift={mean_shift:+.2f}{frob_str}{sk_str}')
-                    if rname in artists['ref_profile_lines']:
-                        artists['ref_profile_lines'][rname].set_data(
-                            np.arange(len(ref_mean)), ref_mean)
-            if diff_lines:
-                artists['ref_diff_text'].set_text('\n'.join(diff_lines))
-            elif _ref_capturing:
-                artists['ref_diff_text'].set_text('Capturing...')
-            else:
-                artists['ref_diff_text'].set_text('')
-
-            views['ax_refoverlay'].set_xlim(-0.5, max(diag_ncols - 0.5, 1))
 
     # ---- Stats text ----
     plot_fps = 0.0
@@ -1776,20 +1331,14 @@ def update_once(fig, artists, views, last_seq, fps_times):
     vtag = {'timeseries': 'TS', 'analytics': 'AN', 'sigquality': 'SQ',
             'diagnostics': 'DX'}.get(_active_view, '??')
     cal_tag = ''
-    if _ref_capturing:
-        cal_tag = f'  ● REF:{_ref_capture_name}'
     
-    # PCA status tag
+    # PCA status tag removed
     pca_tag = ''
-    if pca_model is not None:
-        pca_tag = '  PCA:Active'
-    elif PCA_AVAILABLE:
-        pca_tag = '  PCA:Learning'
     
     pp_tag = ''
     if any(_preproc_flags.values()):
         pp_tag = '  PP:' + '+'.join(k[:3] for k, v in _preproc_flags.items() if v)
-    ref_tag = f'  Refs:{len(_reference_sessions)}' if _reference_sessions else ''
+    ref_tag = ''
     artists['stats_text'].set_text(
         f'[{status}:{vtag}]  Samples: {seq:,}  |  '
         f'CSI: {csi_rate:.0f} pkt/s  |  Plot: {plot_fps:.1f} fps  |  '
@@ -1814,13 +1363,13 @@ def main():
     global _occupation_model, _occupation_window, _occupation_var_window
     global _occupation_model_path
 
-    parser = argparse.ArgumentParser(description="CSI viewer with PCA analytics")
+    parser = argparse.ArgumentParser(description="CSI viewer with analytics")
     parser.add_argument("--rx-port", required=True)
     parser.add_argument("--tx-port", default=None)
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--duration", type=float, default=30.0)
     parser.add_argument("--occupation-model", type=str, default=None,
-                        help="Path to occupation model (.pkl). Deprecated - PCA used instead.")
+                        help="Path to occupation model (.pkl). Deprecated - simple analytics used instead.")
     parser.add_argument("--conf-threshold", type=float, default=0.40,
                         help="Min probability to accept a prediction (0-1, default: 0.40)")
     parser.add_argument("--smooth-window", type=int, default=5,

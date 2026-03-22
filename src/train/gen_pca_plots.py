@@ -223,13 +223,12 @@ def plot_pca_2d(ax, X_pca, y, label_names, title, sil, fisher, var_ratio, is_ind
         spine.set_linewidth(1.2)
         spine.set_color('#333333')
 
-    # Smart annotation badge with cleaner styling
+    # Clean annotation badge with numeric values only
     sil_str = f"Sil = {sil:+.2f}" if sil < 0 else f"Sil = {sil:.2f}"
     fisher_str = f"FDR = {fisher:.2f}"
-    sep_label = sil_quality(sil)
     badge_col = annotation_color(sil)
 
-    annotation_text = f"{sil_str} ({sep_label})\n{fisher_str} ({fisher_quality(fisher)})"
+    annotation_text = f"{sil_str}\n{fisher_str}"
 
     bbox_props = dict(boxstyle="round,pad=0.5", facecolor=badge_col,
                       edgecolor='white', alpha=0.9, linewidth=1.5)
