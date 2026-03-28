@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Efficient WiFi Sensing-Based Human Activity Recognition</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="paper-container">
+        <!-- Header -->
+        <header class="paper-header">
+            <div class="conference-badge animate-fade-in">
+                <span class="badge-text">IEEE ICC 2026</span>
+            </div>
+            <h1 class="paper-title animate-slide-up">
+                Efficient WiFi Sensing-Based Human Activity Recognition With WiFi-Enabled Access Points
+            </h1>
+            <div class="authors animate-fade-in-delay">
+                <span class="author">Gad Gad<sup>1</sup></span>,
+                <span class="author">Iqra Batool<sup>1</sup></span>,
+                <span class="author">Mostafa M. Fouda<sup>2</sup></span>,
+                <span class="author">Shikhar Verma<sup>3</sup></span>,
+                <span class="author">Zubair Md Fadlullah<sup>1</sup></span>
+            </div>
+            <div class="affiliations animate-fade-in-delay-2">
+                <p><sup>1</sup>Department of Computer Science, Western University, London, ON, Canada</p>
+                <p><sup>2</sup>Department of Electrical and Computer Engineering, Idaho State University, Pocatello, ID, USA</p>
+                <p><sup>3</sup>School of Informatics, Kochi University of Technology, Kochi, Japan</p>
+            </div>
+        </header>
+
+        <!-- Abstract -->
+        <section class="abstract animate-on-scroll">
+            <h2>Abstract</h2>
+            <p>
+                The ubiquitous availability of WiFi-enabled devices in our homes welcomes rapid adoption of WiFi sensing technology for smart home applications. WiFi sensing is a privacy-preserving, resource-aware sensing technology that requires no additional deployment cost and overcomes limitations of traditional sensing modalities. In this study we adopt a <strong>two-phase evaluation framework</strong> for WiFi sensing across multiple smart home applications—room occupancy detection, human activity recognition, and indoor localization. In <em>Phase 1</em> (feature representation), we compare our proposed <strong>rolling-variance transform</strong> against raw amplitude and SHARP-based phase sanitisation, showing that rolling variance achieves up to <span class="highlight">1.6× higher accuracy</span> without requiring phase information. In <em>Phase 2</em> (learning model), we compare traditional ML and deep learning architectures, demonstrating that DL models—particularly <strong>1D-CNN</strong>—best exploit the temporal structure in rolling-variance features.
+            </p>
+        </section>
+
+        <!-- Two-column layout -->
+        <div class="two-column">
+            <!-- Key Contributions -->
+            <section class="contributions animate-on-scroll">
+                <h2>Key Contributions</h2>
+                <div class="contribution-cards">
+                    <div class="card animate-card" style="--delay: 0.1s">
+                        <div class="card-icon">📊</div>
+                        <h3>Rolling-Variance Transform</h3>
+                        <p>Time-invariant feature extraction from CSI amplitude alone, eliminating phase information requirements.</p>
+                    </div>
+                    <div class="card animate-card" style="--delay: 0.2s">
+                        <div class="card-icon">⚡</div>
+                        <h3>100× Faster Processing</h3>
+                        <p>Compared to SHARP-based phase sanitisation with superior accuracy.</p>
+                    </div>
+                    <div class="card animate-card" style="--delay: 0.3s">
+                        <div class="card-icon">📁</div>
+                        <h3>Open-Source Datasets</h3>
+                        <p>Multi-task labeled CSI datasets from ESP32-C6 across home and office environments.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- System Model Figure -->
+            <section class="figure-section animate-on-scroll">
+                <h2>System Architecture</h2>
+                <div class="system-diagram">
+                    <div class="diagram-row">
+                        <div class="diagram-block tx animate-pulse-glow">
+                            <div class="block-icon">📡</div>
+                            <div class="block-label">ESP32-C6<br><small>TX (AP)</small></div>
+                        </div>
+                        <div class="signal-arrow animate-signal">
+                            <span>s(t)</span>
+                        </div>
+                        <div class="diagram-block env animate-breathe">
+                            <div class="block-label">Indoor Environment</div>
+                            <div class="path-equations">
+                                <div class="path animate-fade-sequence" style="--seq: 1">LoS: A₁e<sup>-j2πfτ₁</sup></div>
+                                <div class="path animate-fade-sequence" style="--seq: 2">Wall: A₂e<sup>-j2πfτ₂</sup></div>
+                                <div class="path animate-fade-sequence" style="--seq: 3">NLoS: A<sub>L</sub>e<sup>-j2πfτ<sub>L</sub></sup></div>
+                            </div>
+                            <div class="human-icon animate-walk">🚶</div>
+                        </div>
+                        <div class="signal-arrow animate-signal" style="--delay: 0.5s">
+                            <span>H<sub>m</sub>(n)</span>
+                        </div>
+                        <div class="diagram-block rx animate-pulse-glow" style="--delay: 0.3s">
+                            <div class="block-icon">📡</div>
+                            <div class="block-label">ESP32-C6<br><small>RX (STA)</small></div>
+                        </div>
+                    </div>
+                    
+                    <div class="pipeline-section">
+                        <h3>Processing Pipeline</h3>
+                        <div class="pipeline">
+                            <div class="pipeline-step animate-pop" style="--delay: 0.1s">
+                                <span class="step-icon">📦</span>
+                                <span>CSI<br>64 sub.</span>
+                            </div>
+                            <div class="pipeline-arrow">→</div>
+                            <div class="pipeline-step animate-pop" style="--delay: 0.2s">
+                                <span class="step-icon">💻</span>
+                                <span>Host<br>UART</span>
+                            </div>
+                            <div class="pipeline-arrow">→</div>
+                            <div class="pipeline-step animate-pop" style="--delay: 0.3s">
+                                <span class="step-icon">📄</span>
+                                <span>CSV<br>Storage</span>
+                            </div>
+                            <div class="pipeline-arrow">→</div>
+                            <div class="pipeline-step animate-pop" style="--delay: 0.4s">
+                                <span class="step-icon">🔍</span>
+                                <span>Select<br>52 LLTF</span>
+                            </div>
+                            <div class="pipeline-arrow">→</div>
+                            <div class="pipeline-step animate-pop" style="--delay: 0.5s">
+                                <span class="step-icon">⏱️</span>
+                                <span>Resample<br>150 Hz</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="feature-branches">
+                        <h3>Feature Representations</h3>
+                        <div class="branches">
+                            <div class="branch sharp animate-slide-left">
+                                <div class="branch-header">SHARP Sanitize</div>
+                                <div class="branch-desc">Phase → Amplitude</div>
+                            </div>
+                            <div class="branch rolling-var animate-slide-up highlight-branch">
+                                <div class="branch-header">Rolling Variance ⭐</div>
+                                <div class="branch-desc">W ∈ {20, 200, 2000}</div>
+                            </div>
+                            <div class="branch raw-amp animate-slide-right">
+                                <div class="branch-header">Raw Amplitude</div>
+                                <div class="branch-desc">52 subcarriers</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p class="figure-caption"><strong>Figure 1:</strong> End-to-end system overview showing signal model, data pipeline, and three preprocessing approaches.</p>
+            </section>
+        </div>
+
+        <!-- Rolling Variance Equation -->
+        <section class="equation-section animate-on-scroll">
+            <h2>Rolling-Variance Feature Extraction</h2>
+            <div class="equation-box animate-glow">
+                <div class="equation" id="rolling-var-eq">
+                    $$\sigma^2_W[n] = \frac{1}{W}\sum_{i=n-W+1}^{n} x[i]^2 - \left(\frac{1}{W}\sum_{i=n-W+1}^{n} x[i]\right)^{2}$$
+                </div>
+            </div>
+            <p class="equation-desc">
+                The rolling variance acts as a <strong>high-pass envelope detector</strong>: slow baseline drift is suppressed while activity-induced fluctuations are amplified. Computed efficiently via cumulative sums in <span class="highlight">O(N)</span> time.
+            </p>
+        </section>
+
+        <!-- Tables Section -->
+        <section class="tables-section">
+            <h2 class="section-title animate-on-scroll">Experimental Results</h2>
+            
+            <!-- Table 1: Dataset Overview -->
+            <div class="table-container animate-on-scroll">
+                <h3>Table I: Dataset Overview and Collection Summary</h3>
+                <table class="data-table animate-table">
+                    <thead>
+                        <tr>
+                            <th>Dataset</th>
+                            <th>Env.</th>
+                            <th>Task</th>
+                            <th># Cls</th>
+                            <th>Split</th>
+                            <th>Recorded</th>
+                            <th>Packets</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="animate-row" style="--row-delay: 0.1s">
+                            <td>Home HAR (train)</td>
+                            <td>Home</td>
+                            <td>HAR</td>
+                            <td>7</td>
+                            <td>Session holdout</td>
+                            <td>Oct 2025</td>
+                            <td class="number">2.7M</td>
+                            <td class="number">232 min</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.2s">
+                            <td>Home HAR (test)</td>
+                            <td>Home</td>
+                            <td>HAR</td>
+                            <td>7</td>
+                            <td>~3.5 mo gap</td>
+                            <td>Feb 2026</td>
+                            <td class="number">2.7M</td>
+                            <td class="number">233 min</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.3s">
+                            <td>Home Occ. (train)</td>
+                            <td>Home</td>
+                            <td>Occ.</td>
+                            <td>3</td>
+                            <td>Temporal split</td>
+                            <td>Feb 2026</td>
+                            <td class="number">1.1M</td>
+                            <td class="number">100 min</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.4s">
+                            <td>Home Occ. (test)</td>
+                            <td>Home</td>
+                            <td>Occ.</td>
+                            <td>3</td>
+                            <td>same-session</td>
+                            <td>Feb 2026</td>
+                            <td class="number">0.6M</td>
+                            <td class="number">50 min</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.5s">
+                            <td>Office HAR</td>
+                            <td>Office</td>
+                            <td>HAR</td>
+                            <td>4</td>
+                            <td>% split</td>
+                            <td>Oct 2025</td>
+                            <td class="number">0.8M</td>
+                            <td class="number">66 min</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.6s">
+                            <td>Office Loc. (train)</td>
+                            <td>Office</td>
+                            <td>Loc.</td>
+                            <td>4</td>
+                            <td>File holdout</td>
+                            <td>Oct 2025</td>
+                            <td class="number">0.9M</td>
+                            <td class="number">67 min</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.7s">
+                            <td>Office Loc. (test)</td>
+                            <td>Office</td>
+                            <td>Loc.</td>
+                            <td>4</td>
+                            <td>File holdout</td>
+                            <td>Oct 2025</td>
+                            <td class="number">0.7M</td>
+                            <td class="number">57 min</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Table 2: SHARP Comparison -->
+            <div class="table-container animate-on-scroll">
+                <h3>Table II: Communication Setup Parameters Comparison</h3>
+                <table class="data-table comparison-table animate-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>SHARP</th>
+                            <th class="highlight-col">Ours</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="animate-row" style="--row-delay: 0.1s">
+                            <td>Monitored channel</td>
+                            <td>802.11ac ch. 42</td>
+                            <td class="highlight-col">802.11n HT20</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.2s">
+                            <td>OFDM sample duration, T</td>
+                            <td>3.2 × 10⁻⁶ s</td>
+                            <td class="highlight-col">3.2 × 10⁻⁶ s</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.3s">
+                            <td>No. OFDM sub-channels, M</td>
+                            <td>256 (245 used)</td>
+                            <td class="highlight-col">64 (52 used)</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.4s">
+                            <td>Subcarrier spacing, Δf</td>
+                            <td>312.5 kHz</td>
+                            <td class="highlight-col">312.5 kHz</td>
+                        </tr>
+                        <tr class="animate-row" style="--row-delay: 0.5s">
+                            <td>No. monitoring antennas</td>
+                            <td>4</td>
+                            <td class="highlight-col">1</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Table 3: Dataset Characterization -->
+            <div class="table-container animate-on-scroll">
+                <h3>Table III: Dataset Characterization</h3>
+                <table class="data-table animate-table">
+                    <thead>
+                        <tr>
+                            <th>Dataset</th>
+                            <th># Cls</th>
+                            <th>Silhouette ↑</th>
+                            <th>Fisher ↑</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="animate-row difficulty-hard" style="--row-delay: 0.1s">
+                            <td>Home HAR</td>
+                            <td>7</td>
+                            <td class="number negative">−0.155</td>
+                            <td class="number">0.164</td>
+                        </tr>
+                        <tr class="animate-row difficulty-medium" style="--row-delay: 0.2s">
+                            <td>Home Occ.</td>
+                            <td>3</td>
+                            <td class="number">0.412</td>
+                            <td class="number">0.594</td>
+                        </tr>
+                        <tr class="animate-row difficulty-medium" style="--row-delay: 0.3s">
+                            <td>Office HAR</td>
+                            <td>4</td>
+                            <td class="number">0.407</td>
+                            <td class="number">4.030</td>
+                        </tr>
+                        <tr class="animate-row difficulty-easy" style="--row-delay: 0.4s">
+                            <td>Office Loc.</td>
+                            <td>4</td>
+                            <td class="number best">0.800</td>
+                            <td class="number best">23.446</td>
+                        </tr>
+                        <tr class="animate-row reference" style="--row-delay: 0.5s">
+                            <td colspan="4" class="reference-header">Reference Baselines</td>
+                        </tr>
+                        <tr class="animate-row reference" style="--row-delay: 0.6s">
+                            <td>Iris</td>
+                            <td>3</td>
+                            <td class="number">0.513</td>
+                            <td class="number">6.632</td>
+                        </tr>
+                        <tr class="animate-row reference" style="--row-delay: 0.7s">
+                            <td>MNIST</td>
+                            <td>10</td>
+                            <td class="number">0.063</td>
+                            <td class="number">0.334</td>
+                        </tr>
+                        <tr class="animate-row reference" style="--row-delay: 0.8s">
+                            <td>CIFAR-10</td>
+                            <td>10</td>
+                            <td class="number negative">−0.058</td>
+                            <td class="number">0.088</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ML Results Table -->
+        <section class="results-section animate-on-scroll">
+            <h2>Phase 1 Results: Feature Representation</h2>
+            <div class="table-container full-width">
+                <h3>Table IV: Full ML Results (Best accuracy per configuration)</h3>
+                <div class="table-scroll">
+                    <table class="data-table results-table animate-table">
+                        <thead>
+                            <tr>
+                                <th colspan="4">Home HAR (7 cls)</th>
+                                <th class="spacer"></th>
+                                <th colspan="4">Home Occ. (3 cls)</th>
+                                <th class="spacer"></th>
+                                <th colspan="4">Office HAR (4 cls)</th>
+                                <th class="spacer"></th>
+                                <th colspan="4">Office Loc. (4 cls)</th>
+                            </tr>
+                            <tr class="subheader">
+                                <th>Pipeline</th>
+                                <th>Model</th>
+                                <th>L*</th>
+                                <th>Acc</th>
+                                <th class="spacer"></th>
+                                <th>Pipeline</th>
+                                <th>Model</th>
+                                <th>L*</th>
+                                <th>Acc</th>
+                                <th class="spacer"></th>
+                                <th>Pipeline</th>
+                                <th>Model</th>
+                                <th>L*</th>
+                                <th>Acc</th>
+                                <th class="spacer"></th>
+                                <th>Pipeline</th>
+                                <th>Model</th>
+                                <th>L*</th>
+                                <th>Acc</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="animate-row" style="--row-delay: 0.1s">
+                                <td>Amplitude</td><td>RF</td><td>2k</td><td class="number">.269</td>
+                                <td class="spacer"></td>
+                                <td>Amplitude</td><td>RF</td><td>500</td><td class="number best">1.00</td>
+                                <td class="spacer"></td>
+                                <td>Amplitude</td><td>RF</td><td>500</td><td class="number">.815</td>
+                                <td class="spacer"></td>
+                                <td>Amplitude</td><td>RF</td><td>500</td><td class="number best">.906</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.2s">
+                                <td>Amplitude</td><td>XGB</td><td>1k</td><td class="number">.292</td>
+                                <td class="spacer"></td>
+                                <td>Amplitude</td><td>XGB</td><td>500</td><td class="number best">1.00</td>
+                                <td class="spacer"></td>
+                                <td>Amplitude</td><td>XGB</td><td>2k</td><td class="number">.833</td>
+                                <td class="spacer"></td>
+                                <td>Amplitude</td><td>XGB</td><td>1k</td><td class="number">.904</td>
+                            </tr>
+                            <tr class="animate-row highlight-row" style="--row-delay: 0.7s">
+                                <td class="pipeline-highlight">Roll. Var.</td><td>RF</td><td>500</td><td class="number best">.463</td>
+                                <td class="spacer"></td>
+                                <td class="pipeline-highlight">Roll. Var.</td><td>RF</td><td>2k</td><td class="number">.978</td>
+                                <td class="spacer"></td>
+                                <td class="pipeline-highlight">Roll. Var.</td><td>RF</td><td>2k</td><td class="number best">.933</td>
+                                <td class="spacer"></td>
+                                <td class="pipeline-highlight">Roll. Var.</td><td>RF</td><td>500</td><td class="number">.891</td>
+                            </tr>
+                            <tr class="animate-row highlight-row" style="--row-delay: 0.8s">
+                                <td class="pipeline-highlight">Roll. Var.</td><td>XGB</td><td>2k</td><td class="number">.446</td>
+                                <td class="spacer"></td>
+                                <td class="pipeline-highlight">Roll. Var.</td><td>XGB</td><td>500</td><td class="number">.987</td>
+                                <td class="spacer"></td>
+                                <td class="pipeline-highlight">Roll. Var.</td><td>XGB</td><td>1k</td><td class="number">.908</td>
+                                <td class="spacer"></td>
+                                <td class="pipeline-highlight">Roll. Var.</td><td>XGB</td><td>500</td><td class="number">.868</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- DL Results Table -->
+        <section class="results-section animate-on-scroll">
+            <h2>Phase 2 Results: Deep Learning</h2>
+            <div class="table-container full-width">
+                <h3>Table V: Full DL Results (Rolling-variance pipeline)</h3>
+                <div class="table-scroll">
+                    <table class="data-table dl-table animate-table">
+                        <thead>
+                            <tr>
+                                <th rowspan="2">W</th>
+                                <th rowspan="2">Architecture</th>
+                                <th colspan="2">Home HAR</th>
+                                <th colspan="2">Home Occ.</th>
+                                <th colspan="2">Office HAR</th>
+                                <th colspan="2">Office Loc.</th>
+                            </tr>
+                            <tr class="subheader">
+                                <th>L*</th><th>Acc</th>
+                                <th>L*</th><th>Acc</th>
+                                <th>L*</th><th>Acc</th>
+                                <th>L*</th><th>Acc</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="animate-row highlight-row" style="--row-delay: 0.1s">
+                                <td rowspan="3" class="w-cell">20</td>
+                                <td class="arch-highlight">1D-CNN</td>
+                                <td>1k</td><td class="number best">.529</td>
+                                <td>1k</td><td class="number">.993</td>
+                                <td>1k</td><td class="number best">.942</td>
+                                <td>2k</td><td class="number">.957</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.2s">
+                                <td>1D-Conv-LSTM</td>
+                                <td>500</td><td class="number">.510</td>
+                                <td>2k</td><td class="number best">1.00</td>
+                                <td>500</td><td class="number">.933</td>
+                                <td>1k</td><td class="number best">.967</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.3s">
+                                <td>MLP</td>
+                                <td>1k</td><td class="number">.351</td>
+                                <td>500</td><td class="number">.958</td>
+                                <td>500</td><td class="number">.836</td>
+                                <td>1k</td><td class="number">.890</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.4s">
+                                <td rowspan="3" class="w-cell">200</td>
+                                <td>1D-CNN</td>
+                                <td>2k</td><td class="number">.513</td>
+                                <td>2k</td><td class="number best">1.00</td>
+                                <td>500</td><td class="number">.941</td>
+                                <td>1k</td><td class="number">.957</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.5s">
+                                <td>1D-Conv-LSTM</td>
+                                <td>2k</td><td class="number">.525</td>
+                                <td>1k</td><td class="number best">1.00</td>
+                                <td>500</td><td class="number">.933</td>
+                                <td>500</td><td class="number">.889</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.6s">
+                                <td>MLP</td>
+                                <td>1k</td><td class="number">.350</td>
+                                <td>500</td><td class="number">.989</td>
+                                <td>500</td><td class="number">.882</td>
+                                <td>1k</td><td class="number">.924</td>
+                            </tr>
+                            <tr class="animate-row dim-row" style="--row-delay: 0.7s">
+                                <td rowspan="3" class="w-cell">2000</td>
+                                <td>1D-CNN</td>
+                                <td>500</td><td class="number">.355</td>
+                                <td>1k</td><td class="number">.996</td>
+                                <td>500</td><td class="number">.824</td>
+                                <td>1k</td><td class="number">.934</td>
+                            </tr>
+                            <tr class="animate-row dim-row" style="--row-delay: 0.8s">
+                                <td>1D-Conv-LSTM</td>
+                                <td>500</td><td class="number">.468</td>
+                                <td>500</td><td class="number">.994</td>
+                                <td>500</td><td class="number">.924</td>
+                                <td>500</td><td class="number">.916</td>
+                            </tr>
+                            <tr class="animate-row dim-row" style="--row-delay: 0.9s">
+                                <td>MLP</td>
+                                <td>500</td><td class="number">.143</td>
+                                <td>500</td><td class="number">.989</td>
+                                <td>500</td><td class="number">.483</td>
+                                <td>1k</td><td class="number">.935</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Animated Bar Charts -->
+        <section class="charts-section animate-on-scroll">
+            <h2>Performance Comparison</h2>
+            <div class="chart-container">
+                <h3>ML Accuracy by Feature Pipeline</h3>
+                <div class="bar-chart">
+                    <div class="chart-row">
+                        <span class="chart-label">Home HAR</span>
+                        <div class="bars">
+                            <div class="bar roll-var animate-bar" style="--width: 46.3%; --delay: 0.1s" data-value="46.3%"></div>
+                            <div class="bar amp-san animate-bar" style="--width: 28.5%; --delay: 0.2s" data-value="28.5%"></div>
+                            <div class="bar amplitude animate-bar" style="--width: 29.2%; --delay: 0.3s" data-value="29.2%"></div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <span class="chart-label">Home Occ.</span>
+                        <div class="bars">
+                            <div class="bar roll-var animate-bar" style="--width: 98.7%; --delay: 0.2s" data-value="98.7%"></div>
+                            <div class="bar amp-san animate-bar" style="--width: 100%; --delay: 0.3s" data-value="100%"></div>
+                            <div class="bar amplitude animate-bar" style="--width: 100%; --delay: 0.4s" data-value="100%"></div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <span class="chart-label">Office HAR</span>
+                        <div class="bars">
+                            <div class="bar roll-var animate-bar" style="--width: 93.3%; --delay: 0.3s" data-value="93.3%"></div>
+                            <div class="bar amp-san animate-bar" style="--width: 82.4%; --delay: 0.4s" data-value="82.4%"></div>
+                            <div class="bar amplitude animate-bar" style="--width: 83.3%; --delay: 0.5s" data-value="83.3%"></div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <span class="chart-label">Office Loc.</span>
+                        <div class="bars">
+                            <div class="bar roll-var animate-bar" style="--width: 89.1%; --delay: 0.4s" data-value="89.1%"></div>
+                            <div class="bar amp-san animate-bar" style="--width: 90.6%; --delay: 0.5s" data-value="90.6%"></div>
+                            <div class="bar amplitude animate-bar" style="--width: 90.6%; --delay: 0.6s" data-value="90.6%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-color roll-var"></span>Rolling Variance</span>
+                    <span class="legend-item"><span class="legend-color amp-san"></span>Amp.+Sanitised</span>
+                    <span class="legend-item"><span class="legend-color amplitude"></span>Amplitude</span>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>ML vs DL Comparison</h3>
+                <div class="bar-chart comparison">
+                    <div class="chart-row">
+                        <span class="chart-label">Home HAR</span>
+                        <div class="bars">
+                            <div class="bar ml-best animate-bar" style="--width: 46.3%; --delay: 0.1s" data-value="46.3%"></div>
+                            <div class="bar dl-w20 animate-bar" style="--width: 52.9%; --delay: 0.2s" data-value="52.9%"></div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <span class="chart-label">Home Occ.</span>
+                        <div class="bars">
+                            <div class="bar ml-best animate-bar" style="--width: 100%; --delay: 0.2s" data-value="100%"></div>
+                            <div class="bar dl-w20 animate-bar" style="--width: 100%; --delay: 0.3s" data-value="100%"></div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <span class="chart-label">Office HAR</span>
+                        <div class="bars">
+                            <div class="bar ml-best animate-bar" style="--width: 93.3%; --delay: 0.3s" data-value="93.3%"></div>
+                            <div class="bar dl-w20 animate-bar" style="--width: 94.2%; --delay: 0.4s" data-value="94.2%"></div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <span class="chart-label">Office Loc.</span>
+                        <div class="bars">
+                            <div class="bar ml-best animate-bar" style="--width: 90.6%; --delay: 0.4s" data-value="90.6%"></div>
+                            <div class="bar dl-w20 animate-bar" style="--width: 96.7%; --delay: 0.5s" data-value="96.7%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-color ml-best"></span>ML Best</span>
+                    <span class="legend-item"><span class="legend-color dl-w20"></span>DL (W=20)</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- PCA Visualization -->
+        <section class="figures-section animate-on-scroll">
+            <h2>Dataset Visualization</h2>
+            <p class="section-desc">2D PCA projections of all CSI and reference datasets, colored by class label. Click to enlarge.</p>
+            <div class="figure-grid">
+                <div class="figure-item animate-figure" style="--delay: 0.1s">
+                    <img src="assets/pca_home_har.png" alt="PCA Home HAR" class="zoomable">
+                    <p class="fig-caption">Home HAR (Sil. −0.16)</p>
+                </div>
+                <div class="figure-item animate-figure" style="--delay: 0.2s">
+                    <img src="assets/pca_home_occupation.png" alt="PCA Home Occupation" class="zoomable">
+                    <p class="fig-caption">Home Occupation (Sil. 0.41)</p>
+                </div>
+                <div class="figure-item animate-figure" style="--delay: 0.3s">
+                    <img src="assets/pca_office_har.png" alt="PCA Office HAR" class="zoomable">
+                    <p class="fig-caption">Office HAR (Sil. 0.41)</p>
+                </div>
+                <div class="figure-item animate-figure" style="--delay: 0.4s">
+                    <img src="assets/pca_office_localization.png" alt="PCA Office Localization" class="zoomable">
+                    <p class="fig-caption">Office Localization (Sil. 0.80)</p>
+                </div>
+            </div>
+            <div class="figure-full animate-on-scroll">
+                <img src="assets/pca_2d_scatter.png" alt="All PCA Projections" class="zoomable">
+                <p class="figure-caption"><strong>Figure 2:</strong> Complete 2D PCA projections comparing CSI datasets with reference benchmarks (Iris, MNIST, CIFAR).</p>
+            </div>
+        </section>
+
+        <!-- 1D-CNN Architecture -->
+        <section class="architecture-section animate-on-scroll">
+            <h2>1D-CNN Architecture</h2>
+            <div class="cnn-diagram">
+                <div class="layer input-layer animate-layer" style="--delay: 0.1s">
+                    <div class="layer-box">Input (B, 52 × W)</div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="layer reshape-layer animate-layer" style="--delay: 0.2s">
+                    <div class="layer-box">Reshape (B, 52, W)</div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="conv-blocks">
+                    <div class="conv-block animate-layer" style="--delay: 0.3s">
+                        <div class="layer-box conv">Conv1D 52→64, k=7 → BN → ReLU → Pool</div>
+                    </div>
+                    <div class="arrow">↓</div>
+                    <div class="conv-block animate-layer" style="--delay: 0.4s">
+                        <div class="layer-box conv">Conv1D 64→128, k=7 → BN → ReLU → Pool</div>
+                    </div>
+                    <div class="arrow">↓</div>
+                    <div class="conv-block animate-layer" style="--delay: 0.5s">
+                        <div class="layer-box conv">Conv1D 128→128, k=7 → BN → ReLU → Pool</div>
+                    </div>
+                    <span class="block-label">3× Conv Blocks</span>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="layer gap-layer animate-layer" style="--delay: 0.6s">
+                    <div class="layer-box">Global Average Pool → BN</div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="classifier-head">
+                    <div class="layer fc-layer animate-layer" style="--delay: 0.7s">
+                        <div class="layer-box fc">FC 128→64 → ReLU → Dropout</div>
+                    </div>
+                    <div class="arrow">↓</div>
+                    <div class="layer output-layer animate-layer" style="--delay: 0.8s">
+                        <div class="layer-box output">FC 64→C → Softmax</div>
+                    </div>
+                    <span class="block-label">Classifier Head</span>
+                </div>
+            </div>
+            <p class="figure-caption"><strong>Figure 3:</strong> 1D-CNN architecture achieving best overall results on HAR tasks.</p>
+        </section>
+
+        <!-- Resource Consumption -->
+        <section class="resources-section animate-on-scroll">
+            <h2>Resource Consumption</h2>
+            <div class="two-tables">
+                <div class="table-container">
+                    <h3>Table VI: Preprocessing Benchmark</h3>
+                    <table class="data-table animate-table">
+                        <thead>
+                            <tr>
+                                <th>Method</th>
+                                <th>Wall (s)</th>
+                                <th>CPU (s)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="animate-row fast" style="--row-delay: 0.1s">
+                                <td>Rolling Var. (W=20)</td>
+                                <td class="number best">0.031</td>
+                                <td class="number">0.031</td>
+                            </tr>
+                            <tr class="animate-row fast" style="--row-delay: 0.2s">
+                                <td>Rolling Var. (W=200)</td>
+                                <td class="number best">0.027</td>
+                                <td class="number">0.016</td>
+                            </tr>
+                            <tr class="animate-row fast" style="--row-delay: 0.3s">
+                                <td>Rolling Var. (W=2000)</td>
+                                <td class="number best">0.027</td>
+                                <td class="number">0.031</td>
+                            </tr>
+                            <tr class="animate-row slow" style="--row-delay: 0.4s">
+                                <td>SHARP Sanitisation</td>
+                                <td class="number worst">3.508</td>
+                                <td class="number">3.516</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="table-note">Rolling variance is <strong>100× faster</strong> than SHARP!</p>
+                </div>
+                <div class="table-container">
+                    <h3>Table VII: Learning Benchmark</h3>
+                    <table class="data-table animate-table">
+                        <thead>
+                            <tr>
+                                <th>Model</th>
+                                <th>Train (s)</th>
+                                <th>Infer (s)</th>
+                                <th>Acc.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="animate-row" style="--row-delay: 0.1s">
+                                <td>RandomForest</td>
+                                <td class="number best">20.38</td>
+                                <td class="number">0.36</td>
+                                <td class="number">.449</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.2s">
+                                <td>XGBoost</td>
+                                <td class="number worst">1795.80</td>
+                                <td class="number">0.34</td>
+                                <td class="number">.476</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.3s">
+                                <td>1D-CNN</td>
+                                <td class="number">185.12</td>
+                                <td class="number">0.89</td>
+                                <td class="number">.454</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.4s">
+                                <td>MLP</td>
+                                <td class="number">245.90</td>
+                                <td class="number">0.39</td>
+                                <td class="number">.382</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Ablation Study -->
+        <section class="ablation-section animate-on-scroll">
+            <h2>Ablation Study</h2>
+            <div class="two-tables">
+                <div class="table-container">
+                    <h3>Table VIII: Rolling-Variance Window W</h3>
+                    <table class="data-table animate-table">
+                        <thead>
+                            <tr>
+                                <th>W</th>
+                                <th>Home HAR</th>
+                                <th>Home Occ.</th>
+                                <th>Off. HAR</th>
+                                <th>Off. Loc.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="animate-row highlight-row" style="--row-delay: 0.1s">
+                                <td class="w-cell">20</td>
+                                <td class="number best">0.529</td>
+                                <td class="number">0.993</td>
+                                <td class="number best">0.942</td>
+                                <td class="number best">0.957</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.2s">
+                                <td class="w-cell">200</td>
+                                <td class="number">0.512</td>
+                                <td class="number best">1.000</td>
+                                <td class="number">0.941</td>
+                                <td class="number">0.957</td>
+                            </tr>
+                            <tr class="animate-row dim-row" style="--row-delay: 0.3s">
+                                <td class="w-cell">2000</td>
+                                <td class="number">0.355</td>
+                                <td class="number">0.996</td>
+                                <td class="number">0.824</td>
+                                <td class="number">0.933</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="table-container">
+                    <h3>Table IX: Window Length L</h3>
+                    <table class="data-table animate-table">
+                        <thead>
+                            <tr>
+                                <th>L</th>
+                                <th>Home HAR</th>
+                                <th>Home Occ.</th>
+                                <th>Off. HAR</th>
+                                <th>Off. Loc.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="animate-row" style="--row-delay: 0.1s">
+                                <td>500</td>
+                                <td class="number">0.507</td>
+                                <td class="number">0.984</td>
+                                <td class="number">0.937</td>
+                                <td class="number">0.943</td>
+                            </tr>
+                            <tr class="animate-row highlight-row" style="--row-delay: 0.2s">
+                                <td>1000</td>
+                                <td class="number best">0.529</td>
+                                <td class="number">0.993</td>
+                                <td class="number best">0.942</td>
+                                <td class="number best">0.953</td>
+                            </tr>
+                            <tr class="animate-row" style="--row-delay: 0.3s">
+                                <td>2000</td>
+                                <td class="number">0.504</td>
+                                <td class="number best">0.982</td>
+                                <td class="number">0.917</td>
+                                <td class="number">0.957</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Conclusion -->
+        <section class="conclusion animate-on-scroll">
+            <h2>Conclusion</h2>
+            <div class="conclusion-content">
+                <div class="key-findings">
+                    <div class="finding animate-card" style="--delay: 0.1s">
+                        <span class="finding-icon">🎯</span>
+                        <p><strong>1.6× higher accuracy</strong> with rolling variance vs. raw amplitude on challenging HAR tasks</p>
+                    </div>
+                    <div class="finding animate-card" style="--delay: 0.2s">
+                        <span class="finding-icon">⚡</span>
+                        <p><strong>100× faster</strong> than SHARP-based phase sanitisation</p>
+                    </div>
+                    <div class="finding animate-card" style="--delay: 0.3s">
+                        <span class="finding-icon">🧠</span>
+                        <p><strong>1D-CNN</strong> best exploits temporal structure, reaching 52.9% on 7-class Home HAR</p>
+                    </div>
+                    <div class="finding animate-card" style="--delay: 0.4s">
+                        <span class="finding-icon">📱</span>
+                        <p><strong>No phase information needed</strong> — works with amplitude-only CSI</p>
+                    </div>
+                </div>
+                <p class="future-work">
+                    <strong>Future work:</strong> Cross-environment transfer learning, multi-subject generalization, and on-device deployment on ESP32 microcontrollers.
+                </p>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="paper-footer">
+            <p>IEEE International Conference on Communications (ICC) 2026</p>
+            <p class="contact">Contact: <a href="mailto:ggad@uwo.ca">ggad@uwo.ca</a></p>
+        </footer>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="imageModal" class="modal">
+        <span class="close">&times;</span>
+        <img class="modal-content" id="modalImg">
+        <div id="caption"></div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false}
+                ]
+            });
+        });
+    </script>
+</body>
+</html>
