@@ -1,4 +1,4 @@
-# WiFi Sensing Paper
+# WiFi Sensing-Based Human Activity Recognition For Smart Home Applications Using Commodity Access Points Paper
 
-project page for "Efficient WiFi Sensing-Based Human Activity Recognition"
+project page:
 https://gadm21.github.io/WifiSensingESP32HAR
